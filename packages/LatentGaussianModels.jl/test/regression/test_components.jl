@@ -1,6 +1,7 @@
 using LatentGaussianModels: Intercept, FixedEffects, IID, RW1, RW2, AR1, Besag,
                             PCPrecision, precision_matrix, log_hyperprior, nhyperparameters,
-                            initial_hyperparameters
+                            initial_hyperparameters, log_prior_density
+using LatentGaussianModels: log_normalizing_constant
 using GMRFs: GMRFGraph, RW1GMRF, RW2GMRF, IIDGMRF, AR1GMRF, BesagGMRF,
              num_nodes
 
@@ -72,6 +73,41 @@ end
     Q = precision_matrix(c, θ)
     Qref = GMRFs.precision_matrix(AR1GMRF(4; ρ=0.3, τ=2.0))
     @test Matrix(Q) ≈ Matrix(Qref)
+end
+
+@testset "AR1 component — fix_τ toggle (KroneckerComponent group axis)" begin
+    # Mirror IID's fix_τ pattern. Used by `KroneckerComponent` to match
+    # R-INLA's `f(field, group, control.group=list(model="ar1"))`, where
+    # the group precision is implicit (`prec = 1`) for identifiability
+    # against the spatial precision.
+    c = AR1(5; τ_init=0.0, fix_τ=true)
+    @test length(c) == 5
+    @test nhyperparameters(c) == 1
+    @test initial_hyperparameters(c) == [0.0]
+
+    θ = [atanh(0.4)]
+    Q = precision_matrix(c, θ)
+    Qref = GMRFs.precision_matrix(AR1GMRF(5; ρ=0.4, τ=1.0))
+    @test Matrix(Q) ≈ Matrix(Qref)
+
+    # Free vs fixed branches must agree at matching (log τ, atanh ρ).
+    c_free = AR1(5)
+    @test Matrix(precision_matrix(c_free, [0.0, atanh(0.4)])) ≈ Matrix(Q)
+
+    # log_hyperprior under fix_τ drops the precision contribution but
+    # keeps the ρ prior.
+    @test log_hyperprior(c, θ) ≈
+          log_prior_density(c.ρprior, atanh(0.4))
+
+    # log_normalizing_constant matches the free branch at τ = 1.
+    @test log_normalizing_constant(c, θ) ≈
+          log_normalizing_constant(c_free, [0.0, atanh(0.4)])
+
+    # Non-zero τ_init shifts the held precision.
+    c2 = AR1(4; τ_init=log(2.5), fix_τ=true)
+    Q2 = precision_matrix(c2, [atanh(-0.2)])
+    Q2ref = GMRFs.precision_matrix(AR1GMRF(4; ρ=-0.2, τ=2.5))
+    @test Matrix(Q2) ≈ Matrix(Q2ref)
 end
 
 @testset "Besag component" begin

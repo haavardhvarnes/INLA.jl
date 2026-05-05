@@ -82,7 +82,7 @@ end
 """
     _split_rhs(rhs) -> (has_intercept::Bool,
                        covariates::Vector{Symbol},
-                       randoms::Vector{Tuple{Symbol, Any}})
+                       randoms::Vector{<:NamedTuple})
 
 Walk the RHS, splitting at `+`. Each summand is one of:
 
@@ -91,6 +91,18 @@ Walk the RHS, splitting at `+`. Each summand is one of:
 - bare `Symbol` — fixed-effects covariate column.
 - `f(col, Component(...))` — random-effect term; `col` is a column
   symbol, the second arg is the (un-evaluated) component expression.
+- `f(col, Component(...); replicate = id_col)` —
+  R-INLA-style replicated component (PR-5). The macro emits a runtime
+  call that wraps the inner component as `Replicate(comp, R)` where
+  `R = maximum(id_col)`.
+- `f(col, Component; group = grp_col)` — R-INLA-style grouped
+  component (PR-5, factory form). The second positional argument is
+  the *factory* (a `Symbol` or callable, not an instance); the macro
+  emits a runtime `Group(factory, grp_col)` wrap.
+
+Each `f(...)` term lowers to a `NamedTuple{(:col, :comp_expr,
+:replicate, :group)}` where `replicate` / `group` carry the keyword-
+argument column symbols (or `nothing`).
 
 Other forms (transformations, interactions, etc.) raise an error
 referring to user concepts.
@@ -98,7 +110,10 @@ referring to user concepts.
 function _split_rhs(rhs)
     has_intercept = true
     covariates = Symbol[]
-    randoms = Tuple{Symbol, Any}[]
+    randoms = NamedTuple{
+        (:col, :comp_expr, :replicate, :group),
+        Tuple{Symbol, Any, Union{Symbol, Nothing}, Union{Symbol, Nothing}},
+    }[]
     for s in _flatten_plus(rhs)
         if s === 1
             has_intercept = true
@@ -107,18 +122,72 @@ function _split_rhs(rhs)
         elseif s isa Symbol
             push!(covariates, s)
         elseif s isa Expr && s.head === :call && s.args[1] === :f
-            length(s.args) == 3 ||
-                error("@lgm: malformed `f(...)` term `$s`. Expected `f(column, Component(...))`.")
-            col = s.args[2]
-            col isa Symbol ||
-                error("@lgm: `f(...)`: first argument must be a column name (Symbol), got `$col`.")
-            comp_expr = s.args[3]
-            push!(randoms, (col, comp_expr))
+            push!(randoms, _parse_f_term(s))
         else
-            error("@lgm: unsupported RHS term `$s`. PR-1 supports `1`, `0`, `-1`, bare column symbols, and `f(col, Component(...))` only.")
+            error("@lgm: unsupported RHS term `$s`. Supported: `1`, `0`, `-1`, bare column symbols, and `f(col, Component(...)[; replicate=…|group=…])`.")
         end
     end
     return has_intercept, covariates, randoms
+end
+
+"""
+    _parse_f_term(s::Expr) -> NamedTuple
+
+Pull the column symbol, component expression, and `replicate`/`group`
+keyword arguments out of an `f(...)` call. Accepts both
+`f(col, comp; replicate=id)` (semicolon-style) and
+`f(col, comp, replicate=id)` (trailing-kw style); rejects unsupported
+keywords with a user-visible error.
+"""
+function _parse_f_term(s::Expr)
+    kw_pairs = Pair{Symbol, Any}[]
+    positional = Any[]
+    for a in s.args[2:end]
+        if a isa Expr && a.head === :parameters
+            for p in a.args
+                _record_f_kw!(kw_pairs, p, s)
+            end
+        elseif a isa Expr && (a.head === :kw || a.head === :(=)) && a.args[1] isa Symbol
+            _record_f_kw!(kw_pairs, a, s)
+        else
+            push!(positional, a)
+        end
+    end
+    length(positional) == 2 ||
+        error("@lgm: malformed `f(...)` term `$s`. Expected `f(column, Component[; replicate=…, group=…])` — got $(length(positional)) positional arg(s).")
+    col, comp_expr = positional
+    col isa Symbol ||
+        error("@lgm: `f(...)`: first argument must be a column name (Symbol), got `$col`.")
+    replicate = nothing
+    group = nothing
+    for (k, v) in kw_pairs
+        if k === :replicate
+            replicate === nothing ||
+                error("@lgm: `f(...)`: `replicate` keyword given more than once.")
+            v isa Symbol ||
+                error("@lgm: `f(...; replicate = …)` expects a column name (Symbol), got `$v`.")
+            replicate = v
+        elseif k === :group
+            group === nothing ||
+                error("@lgm: `f(...)`: `group` keyword given more than once.")
+            v isa Symbol ||
+                error("@lgm: `f(...; group = …)` expects a column name (Symbol), got `$v`.")
+            group = v
+        else
+            error("@lgm: `f(...)`: unsupported keyword `$k`. Supported keywords: `replicate`, `group`.")
+        end
+    end
+    replicate === nothing || group === nothing ||
+        error("@lgm: `f(...)`: `replicate` and `group` are mutually exclusive — got both in `$s`.")
+    return (; col = col, comp_expr = comp_expr,
+        replicate = replicate, group = group)
+end
+
+function _record_f_kw!(kw_pairs::Vector{Pair{Symbol, Any}}, p, s)
+    p isa Expr && (p.head === :kw || p.head === :(=)) && p.args[1] isa Symbol ||
+        error("@lgm: malformed `f(...)` keyword argument in `$s`.")
+    push!(kw_pairs, p.args[1] => p.args[2])
+    return kw_pairs
 end
 
 """

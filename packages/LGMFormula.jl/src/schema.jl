@@ -3,6 +3,85 @@
 # build the per-term blocks of the linear projector matrix.
 
 """
+    _wrap_term(comp_or_factory, data, replicate_col, group_col) ->
+        AbstractLatentComponent
+
+PR-5 runtime helper. Wraps an `f(col, Comp; replicate = id)` or
+`f(col, Factory; group = grp)` term against the actual `data` table:
+
+- `replicate_col::Symbol`: returns `Replicate(comp, R)` where
+  `R = maximum(data.\$replicate_col)`. `comp_or_factory` must be an
+  `AbstractLatentComponent` instance.
+- `group_col::Symbol`: returns `Group(factory, data.\$group_col)`.
+  `comp_or_factory` is the factory (e.g. `IID`, `AR1`); the
+  per-group inner components are constructed by the LGM core
+  `Group(factory, group_id)` constructor — see
+  `packages/LatentGaussianModels.jl/src/components/group.jl`.
+- both `nothing`: returns `comp_or_factory` unchanged (must be a
+  component instance — caller's responsibility).
+"""
+function _wrap_term(comp_or_factory, data, replicate_col, group_col)
+    replicate_col === nothing || group_col === nothing ||
+        throw(ArgumentError("@lgm: `f(...)` cannot have both `replicate` and `group` set."))
+    if replicate_col === nothing && group_col === nothing
+        comp_or_factory isa LatentGaussianModels.AbstractLatentComponent ||
+            throw(ArgumentError("@lgm: f-term: second argument must be an `AbstractLatentComponent`, got $(typeof(comp_or_factory))"))
+        return comp_or_factory
+    elseif replicate_col !== nothing
+        comp_or_factory isa LatentGaussianModels.AbstractLatentComponent ||
+            throw(ArgumentError("@lgm: f-term with `replicate = $(replicate_col)`: second argument must be an `AbstractLatentComponent` instance (e.g. `AR1(n)`), got $(typeof(comp_or_factory))"))
+        rep_col = _checked_index_column(data, replicate_col)
+        R = maximum(rep_col)
+        R ≥ 1 ||
+            throw(ArgumentError("@lgm: replicate column `$(replicate_col)` must contain integers ≥ 1; got max $(R)"))
+        return LatentGaussianModels.Replicate(comp_or_factory, R)
+    else
+        grp_col = _checked_index_column(data, group_col)
+        return LatentGaussianModels.Group(comp_or_factory, grp_col)
+    end
+end
+
+function _checked_index_column(data, col_name::Symbol)
+    Tables.istable(data) ||
+        throw(ArgumentError("@lgm: `data` is not a Tables.jl-compatible source (got $(typeof(data)))"))
+    cols = Tables.columns(data)
+    names = Tuple(Tables.columnnames(cols))
+    col_name in names ||
+        throw(ArgumentError("@lgm: column `$(col_name)` not found in `data`. Available columns: $(names)"))
+    raw = Tables.getcolumn(cols, col_name)
+    out = Vector{Int}(undef, length(raw))
+    @inbounds for i in eachindex(raw)
+        v = raw[i]
+        v isa Integer ||
+            throw(ArgumentError("@lgm: column `$(col_name)` must contain integers; got entry of type $(typeof(v)) at row $(i)"))
+        v ≥ 1 ||
+            throw(ArgumentError("@lgm: column `$(col_name)` must contain integers ≥ 1; got $(v) at row $(i)"))
+        out[i] = Int(v)
+    end
+    return out
+end
+
+# Normalise heterogeneous `randoms` inputs to 4-tuples
+# `(col, comp, replicate_or_nothing, group_or_nothing)`. Accepts both the
+# new 4-tuple/NamedTuple form and the PR-1..PR-4 2-tuple form for
+# `lgmformula` backward-compat.
+function _normalize_term(t)
+    if t isa NamedTuple
+        col = t.col
+        comp = t.comp_expr
+        rep = haskey(t, :replicate) ? t.replicate : nothing
+        grp = haskey(t, :group) ? t.group : nothing
+        return (col, comp, rep, grp)
+    elseif t isa Tuple && length(t) == 2
+        return (t[1], t[2], nothing, nothing)
+    elseif t isa Tuple && length(t) == 4
+        return (t[1], t[2], t[3], t[4])
+    else
+        throw(ArgumentError("@lgm: f-term must be `(col, comp)` or `(col, comp, replicate, group)`, got $(typeof(t))"))
+    end
+end
+
+"""
     _check_columns(data, lhs, covariates, randoms)
 
 Validate that `data` is a `Tables.jl` source and that every referenced
@@ -23,11 +102,19 @@ function _check_columns(data, lhs::Symbol, covariates::AbstractVector,
             throw(ArgumentError("@lgm: covariate column `$(c)` not found in `data`. Available columns: $(names)"))
     end
     for term in randoms
-        col_name = first(term)
+        col_name, _, rep, grp = _normalize_term(term)
         col_name isa Symbol ||
             throw(ArgumentError("@lgm: f-term column must be a Symbol, got $(typeof(col_name))"))
         col_name in names ||
             throw(ArgumentError("@lgm: f-term column `$(col_name)` not found in `data`. Available columns: $(names)"))
+        if rep !== nothing
+            rep in names ||
+                throw(ArgumentError("@lgm: f-term `replicate = $(rep)` column not found in `data`. Available columns: $(names)"))
+        end
+        if grp !== nothing
+            grp in names ||
+                throw(ArgumentError("@lgm: f-term `group = $(grp)` column not found in `data`. Available columns: $(names)"))
+        end
     end
     return nothing
 end
@@ -39,12 +126,18 @@ end
 Assemble the linear projector matrix `A` for the formula. Columns are
 ordered as `[intercept | covariates | random-effect indicators...]`.
 
-Each random-effect term contributes `length(comp)` columns; the
-indicator at row `i` is 1 in column `idx[i]` (within that block). The
-input column must contain integers in `1:length(comp)`.
+Each random-effect term contributes one block:
 
-PR-1 restriction: a column for an `f(col, Component)` term must be an
-integer index column. Categorical / string-keyed columns ship in PR-3.
+- Plain `f(col, Comp)`: `length(comp)` columns; row i is 1 in column
+  `idx[i]` (within the block). Input column must contain integers in
+  `1:length(comp)`.
+- `f(col, Comp; replicate = id_col)`: `R · length(comp)` columns,
+  laid out `[x⁽¹⁾; x⁽²⁾; …; x⁽ᴿ⁾]`. Row i is 1 in column
+  `(id[i] - 1) · length(comp) + col[i]`.
+- `f(col, Factory; group = grp_col)`: `Σ_g s_g` columns where `s_g`
+  is the per-group size (number of rows with `grp == g`). Row i is
+  1 in column `offset[grp[i]] + col[i]`. `col[i]` is required to lie
+  in `1:s_{grp[i]}`.
 """
 function _build_design_matrix(data, lhs::Symbol, has_intercept::Bool,
         covariates::AbstractVector, randoms::AbstractVector)
@@ -72,20 +165,72 @@ function _build_design_matrix(data, lhs::Symbol, has_intercept::Bool,
     end
 
     for term in randoms
-        col_name, comp = first(term), last(term)
-        comp isa LatentGaussianModels.AbstractLatentComponent ||
-            throw(ArgumentError("@lgm: f-term `$(col_name)`: second argument must be an `AbstractLatentComponent`, got $(typeof(comp))"))
+        col_name, comp_or_factory, rep_col, grp_col = _normalize_term(term)
         col = Tables.getcolumn(cols, col_name)
         length(col) == n_obs ||
             throw(DimensionMismatch("@lgm: f-term column `$(col_name)` has length $(length(col)); outcome `$(lhs)` has length $(n_obs)"))
-        n_levels = length(comp)
-        idx = _validate_index_column(col, col_name, n_levels)
-        push!(blocks, sparse(1:n_obs, idx, 1.0, n_obs, n_levels))
+        push!(blocks, _build_term_block(comp_or_factory, col, col_name,
+            rep_col, grp_col, cols, n_obs))
     end
 
     isempty(blocks) &&
         throw(ArgumentError("@lgm: model has no terms — formula must include at least `1`, a covariate, or `f(...)`"))
     return length(blocks) == 1 ? blocks[1] : reduce(hcat, blocks)
+end
+
+function _build_term_block(comp_or_factory, col, col_name::Symbol,
+        rep_col::Union{Symbol, Nothing}, grp_col::Union{Symbol, Nothing},
+        cols, n_obs::Int)
+    if rep_col === nothing && grp_col === nothing
+        comp_or_factory isa LatentGaussianModels.AbstractLatentComponent ||
+            throw(ArgumentError("@lgm: f-term `$(col_name)`: second argument must be an `AbstractLatentComponent`, got $(typeof(comp_or_factory))"))
+        n_levels = length(comp_or_factory)
+        idx = _validate_index_column(col, col_name, n_levels)
+        return sparse(1:n_obs, idx, 1.0, n_obs, n_levels)
+    elseif rep_col !== nothing
+        comp_or_factory isa LatentGaussianModels.AbstractLatentComponent ||
+            throw(ArgumentError("@lgm: f-term `$(col_name)` with `replicate = $(rep_col)`: second argument must be an `AbstractLatentComponent` instance, got $(typeof(comp_or_factory))"))
+        inner_n = length(comp_or_factory)
+        idx = _validate_index_column(col, col_name, inner_n)
+        rep_raw = Tables.getcolumn(cols, rep_col)
+        length(rep_raw) == n_obs ||
+            throw(DimensionMismatch("@lgm: replicate column `$(rep_col)` has length $(length(rep_raw)); expected $(n_obs)"))
+        R = _max_index(rep_raw, rep_col)
+        rep_idx = _validate_index_column(rep_raw, rep_col, R)
+        block_cols = (rep_idx .- 1) .* inner_n .+ idx
+        return sparse(1:n_obs, block_cols, 1.0, n_obs, R * inner_n)
+    else
+        grp_raw = Tables.getcolumn(cols, grp_col)
+        length(grp_raw) == n_obs ||
+            throw(DimensionMismatch("@lgm: group column `$(grp_col)` has length $(length(grp_raw)); expected $(n_obs)"))
+        G = _max_index(grp_raw, grp_col)
+        grp_idx = _validate_index_column(grp_raw, grp_col, G)
+        sizes = zeros(Int, G)
+        @inbounds for g in grp_idx
+            sizes[g] += 1
+        end
+        all(>(0), sizes) ||
+            throw(ArgumentError("@lgm: group column `$(grp_col)` must have every label in 1:$(G) present; missing groups: $(findall(==(0), sizes))"))
+        offsets = [0; cumsum(sizes)[1:(end - 1)]]
+        idx = _validate_within_group_column(col, col_name, grp_idx, sizes)
+        block_cols = offsets[grp_idx] .+ idx
+        return sparse(1:n_obs, block_cols, 1.0, n_obs, sum(sizes))
+    end
+end
+
+function _max_index(raw, col_name::Symbol)
+    isempty(raw) &&
+        throw(ArgumentError("@lgm: column `$(col_name)` is empty"))
+    m = 0
+    @inbounds for i in eachindex(raw)
+        v = raw[i]
+        v isa Integer ||
+            throw(ArgumentError("@lgm: column `$(col_name)` must contain integers; got entry of type $(typeof(v)) at row $(i)"))
+        v ≥ 1 ||
+            throw(ArgumentError("@lgm: column `$(col_name)` must contain integers ≥ 1; got $(v) at row $(i)"))
+        v > m && (m = Int(v))
+    end
+    return m
 end
 
 function _validate_index_column(col, col_name::Symbol, n_levels::Int)
@@ -96,6 +241,21 @@ function _validate_index_column(col, col_name::Symbol, n_levels::Int)
             throw(ArgumentError("@lgm: f-term column `$(col_name)` must contain integers in 1:$(n_levels); got entry of type $(typeof(v)) at row $(i)"))
         (1 ≤ v ≤ n_levels) ||
             throw(ArgumentError("@lgm: f-term column `$(col_name)` value $(v) at row $(i) is outside 1:$(n_levels) (component has $(n_levels) levels)"))
+        idx[i] = Int(v)
+    end
+    return idx
+end
+
+function _validate_within_group_column(col, col_name::Symbol,
+        grp_idx::AbstractVector{Int}, sizes::AbstractVector{Int})
+    idx = Vector{Int}(undef, length(col))
+    @inbounds for i in eachindex(col)
+        v = col[i]
+        v isa Integer ||
+            throw(ArgumentError("@lgm: f-term column `$(col_name)` must contain integers; got entry of type $(typeof(v)) at row $(i)"))
+        s = sizes[grp_idx[i]]
+        (1 ≤ v ≤ s) ||
+            throw(ArgumentError("@lgm: f-term column `$(col_name)` value $(v) at row $(i) is outside 1:$(s) for its group (group size = $(s))"))
         idx[i] = Int(v)
     end
     return idx
@@ -156,8 +316,15 @@ would produce.
 - `intercept::Bool = true`: whether to include `Intercept()`.
 - `covariates::Vector{Symbol} = Symbol[]`: scalar fixed-effect column
   names. Becomes `FixedEffects(length(covariates))` if non-empty.
-- `randoms::Vector{<:Tuple{Symbol, AbstractLatentComponent}} = []`:
-  list of `(col, component)` pairs for `f(...)` terms.
+- `randoms::AbstractVector = []`: list of f-term specifications. Each
+  entry may be:
+  - `(col::Symbol, comp::AbstractLatentComponent)` — plain f-term.
+  - `(col, comp, replicate::Symbol, group::Nothing)` — replicated
+    component; runtime wraps as `Replicate(comp, R)`.
+  - `(col, factory, replicate::Nothing, group::Symbol)` — grouped
+    component; runtime wraps as `Group(factory, grp_col_values)`.
+  - A `NamedTuple{(:col, :comp_expr, :replicate, :group)}` — internal
+    form emitted by the macro.
 - `family`: observation likelihood (single-LHS) or tuple of
   likelihoods (multi-LHS).
 """
@@ -167,7 +334,7 @@ function lgmformula(data;
         covariates::Vector{Symbol} = Symbol[],
         randoms::AbstractVector = Tuple{Symbol, LatentGaussianModels.AbstractLatentComponent}[],
         family)
-    components = _build_components(intercept, length(covariates), randoms)
+    components = _build_components(intercept, length(covariates), randoms, data)
     if lhs isa Symbol
         family isa LatentGaussianModels.AbstractLikelihood ||
             throw(ArgumentError("@lgm: single-LHS `lgmformula` requires `family::AbstractLikelihood`, got $(typeof(family))"))
@@ -186,13 +353,14 @@ function lgmformula(data;
 end
 
 function _build_components(has_intercept::Bool, n_covariates::Int,
-        randoms::AbstractVector)
+        randoms::AbstractVector, data)
     parts = LatentGaussianModels.AbstractLatentComponent[]
     has_intercept && push!(parts, LatentGaussianModels.Intercept())
     n_covariates > 0 &&
         push!(parts, LatentGaussianModels.FixedEffects(n_covariates))
     for term in randoms
-        push!(parts, last(term))
+        _, comp_or_factory, rep, grp = _normalize_term(term)
+        push!(parts, _wrap_term(comp_or_factory, data, rep, grp))
     end
     isempty(parts) &&
         throw(ArgumentError("@lgm: model has no components — formula must include at least `1`, a covariate, or `f(...)`"))

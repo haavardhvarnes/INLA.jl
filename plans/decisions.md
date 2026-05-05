@@ -3849,6 +3849,143 @@ for items 1 and 2. Item 3 is then a single follow-up PR.
 
 ---
 
+## ADR-035: `@lgm` `replicate` / `group` routing — runtime wrap calls in the components tuple
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase N PR-5 ships R-INLA's `replicate` and `group` term keywords as
+`@lgm y ~ 1 + f(t, AR1(n); replicate = id) + f(s, IID; group = grp)`.
+Both wrap the inner component:
+
+- `replicate = id_col` → `Replicate(comp, R)` where
+  `R = maximum(data.id_col)`.
+- `group = grp_col` → `Group(factory, data.grp_col)` (LGM core's
+  factory-form constructor that infers per-group sizes from the
+  label vector).
+
+Both wrappers depend on `data` to determine `R` or per-group sizes.
+The macro itself has no access to `data` at expansion time (macros run
+before runtime). Two design alternatives:
+
+a. **Bake `data` into the AST literally** — illegal: would require
+   the macro to receive a `data` value at expansion time, which is
+   exactly the "code generation based on runtime data" failure mode
+   forbidden by `plans/macro-policy.md`.
+
+b. **Emit a runtime helper call into the AST** — the components tuple
+   slot for a replicated/grouped term contains an
+   `LGMFormula._wrap_term(comp, data, replicate_col, group_col)` call
+   that resolves the wrap at runtime. The AST is data-free; only the
+   *expansion's evaluation* reads `data`, which is what every other
+   `@lgm` term already does (via `_build_design_matrix(data, …)`).
+
+### Decision
+
+Adopt (b). The components tuple in the expansion is no longer purely
+a tuple of literal `Component(args...)` calls — for `replicate`/`group`
+terms, the corresponding slot is a `_wrap_term(...)` call. Concretely:
+
+```julia
+@lgm y ~ 1 + f(t, AR1(n); replicate = id) data=df family=Gaussian()
+
+# expands to (modulo escapes):
+
+LatentGaussianModel(
+    GaussianLikelihood(),
+    (LatentGaussianModels.Intercept(),
+     LGMFormula._wrap_term(AR1(n), df, :id, nothing)),
+    LGMFormula._build_design_matrix(df, :y, true, Symbol[],
+        [(:t, AR1(n), :id, nothing)]),
+)
+```
+
+The plain (no-replicate / no-group) case continues to emit a literal
+`Component(args)` slot — backward-compatible with the PR-1..PR-4
+macroexpand structural tests.
+
+`_wrap_term(comp, data, replicate_col, group_col)`:
+
+- both `nothing`: returns `comp` (used only by the function-form
+  `lgmformula` for symmetry; macro skips this path).
+- `replicate ≠ nothing`: validates the column, computes
+  `R = maximum(rep_col)`, returns `Replicate(comp, R)`. `comp` must
+  be an `AbstractLatentComponent` instance.
+- `group ≠ nothing`: returns `Group(factory, grp_col)`. `comp` is the
+  factory (a callable like `IID`, `AR1`, `RW1`); LGM core's
+  `Group(factory, group_id)` constructor counts per-group sizes and
+  invokes `factory(s_g)` for each group size.
+
+The design-matrix builder `_build_design_matrix` was extended to
+accept the same per-term spec and lay out the projector block as:
+
+- replicate: `(R · length(comp))` columns; row i has 1 at column
+  `(rep_col[i] - 1) · length(comp) + idx_col[i]`.
+- group: `Σ_g s_g` columns; row i has 1 at column
+  `offset[grp_col[i]] + idx_col[i]`, where `offset[g]` is the
+  cumulative sum of preceding per-group sizes.
+
+Both layouts match R-INLA's panel-stacking convention exactly, so
+the latent-vector ordering between R-INLA and `@lgm` is bit-for-bit
+identical (verified against the
+`synthetic_replicate_ar1` Phase I-C oracle).
+
+### Consequences
+
+#### Positive
+
+- Macro is still purely source-to-source — the AST contains no `data`
+  values, only references to the data-binding `Symbol` and runtime
+  helper calls.
+- `@macroexpand` output is readable: replicated/grouped slots are a
+  named call into the public `LGMFormula._wrap_term` rather than
+  inlined indexing logic.
+- Errors from `_wrap_term` surface at the macro-call site (because
+  Julia traces back through the helper call to user code) and refer
+  to the user-supplied column name, not table internals.
+- Symmetric with `_build_design_matrix`'s data-bound nature, which
+  has always been the runtime-deferred slot in the expansion.
+
+#### Neutral
+
+- The "components tuple appears literally" guarantee from PR-1's
+  macroexpand tests holds for plain f-terms but is relaxed for
+  replicate/group. The PR-5 macroexpand tests assert the relaxed
+  invariant directly: `_is_call_to(slot, :_wrap_term)`.
+- `Group` accepts a factory rather than an instance — this asymmetry
+  with `Replicate` (which takes an instance) reflects LGM core's
+  existing `Group(factory, group_id; kwargs...)` API, not a
+  formula-side choice. Documented in `LGMFormula.jl`'s docstring.
+
+#### Negative
+
+- A user who reads `@macroexpand` on a replicate/group formula and
+  expects a static components tuple will see the wrapper call. The
+  formula's docstring explicitly notes this; the wrapper name is
+  public (`LGMFormula._wrap_term`) and its effect is documented.
+- The `lgmformula` function form must accept either 2-tuples
+  `(col, comp)` or 4-tuples `(col, comp, replicate, group)` — not as
+  elegant as a single shape, but the 2-tuple form is required for
+  PR-1..PR-4 backward compatibility.
+
+### References
+
+- [`packages/LGMFormula.jl/src/schema.jl`](packages/LGMFormula.jl/src/schema.jl)
+  — `_wrap_term`, `_build_design_matrix` extensions.
+- [`packages/LatentGaussianModels.jl/src/components/replicate.jl`](packages/LatentGaussianModels.jl/src/components/replicate.jl)
+  — `Replicate(component, n_replicates)` LGM core API.
+- [`packages/LatentGaussianModels.jl/src/components/group.jl`](packages/LatentGaussianModels.jl/src/components/group.jl)
+  — `Group(factory, group_id; kwargs...)` factory-form constructor.
+- [`plans/macro-policy.md`](plans/macro-policy.md) — "Code generation
+  based on runtime data" prohibition that this design works around
+  via runtime helper calls in the AST rather than baked-in data.
+- ADR-008 — `LGMFormula.jl` as a separate package; the macro is sugar
+  over Tier-1 constructors and may emit any constructor call sequence.
+
+---
+
 ## ADR template for future entries
 
 ```

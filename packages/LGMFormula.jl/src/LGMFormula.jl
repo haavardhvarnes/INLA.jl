@@ -45,6 +45,13 @@ to a `Tables.jl`-compatible source.
   — intercept + multiple random effects.
 - `@lgm (y1, y2) ~ 1 + f(idx, IID(n)) data=df family=(GaussianLikelihood(), PoissonLikelihood())`
   — multi-likelihood tuple-LHS with shared RHS (wide-format).
+- `@lgm y ~ 1 + f(t, AR1(n); replicate = id) data=df family=GaussianLikelihood()`
+  — replicated component (R-INLA's `replicate=id`); runtime wraps as
+  `Replicate(comp, R)` with `R = maximum(data.id)`.
+- `@lgm y ~ 1 + f(t, AR1; group = grp) data=df family=GaussianLikelihood()`
+  — grouped component (R-INLA's `group=grp` + factory form); runtime
+  wraps as `Group(factory, data.grp)` with one inner component per
+  group label.
 
 # Restrictions
 
@@ -54,6 +61,8 @@ to a `Tables.jl`-compatible source.
   integers in `1:length(Component)`.
 - Tuple-LHS columns must all have the same length (wide-format only;
   long-format with a `type` column is left for a follow-up).
+- `replicate` and `group` are mutually exclusive within a single
+  `f(...)` term.
 - `Copy(...)` augmentation (`f(...; copy = :name)`) ships in PR-4b.
 
 # Expansion

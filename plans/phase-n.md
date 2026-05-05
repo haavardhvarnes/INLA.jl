@@ -215,15 +215,31 @@ truth.
 
 ### PR-5 — `replicate` / `group` routing
 
-`f(col; replicate = rep_col)` → `Replicate(component, n_levels(rep_col))`.
-`f(col; group = group_col)` → `Group(component, group_col_vec)`.
+`f(col, Comp(n); replicate = rep_col)` → runtime
+`Replicate(Comp(n), R)` with `R = maximum(data.rep_col)`.
+`f(col, Factory; group = grp_col)` → runtime
+`Group(Factory, data.grp_col)` (LGM core's factory-form constructor;
+per-group sizes inferred from the label vector).
 
-This is the one place where the macro looks at `data` columns at
-expansion time (to compute level counts and group ids); document why
-in the ADR draft.
+**ADR-035** (PR-5): the components tuple in the expansion contains a
+`LGMFormula._wrap_term(...)` call for each replicate/group slot; the
+macro itself remains source-to-source (no data values in the AST).
+The wrapper resolves `data.rep_col` / `data.grp_col` at runtime.
+Plain (no-replicate / no-group) f-terms continue to emit literal
+`Component(args)` slots — backward-compatible with PR-1..PR-4
+macroexpand structural tests.
 
-**Tests**: roundtrip on the Phase I synthetic_replicate_ar1 fixture
-(longitudinal panel, replicated AR1).
+**Tests**: roundtrip equality against
+- `Replicate(IID(n), R)` and `Replicate(AR1(n), R)` shapes matching
+  the `synthetic_replicate_ar1` Phase I-C oracle.
+- `Group(IID, grp)` and `Group(AR1, grp)` factory-form shapes with
+  unequal per-group sizes.
+- Mixed: plain f-term + replicate f-term.
+
+Macroexpand structural assertions: replicate/group slots are
+`_wrap_term(...)` calls; plain f-term slots remain bare `Component(args)`
+calls. Error-message tests for missing columns, both-kwargs-set,
+unsupported kwargs, non-symbol kwarg values.
 
 ### PR-6 — Migration guide + vignette parity
 

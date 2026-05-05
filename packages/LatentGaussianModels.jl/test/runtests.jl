@@ -87,6 +87,9 @@ using GMRFs
     @testset "Laplace — Hard constraint" begin
         include("regression/test_laplace_constrained.jl")
     end
+    @testset "Safety net — Phase M PR-4" begin
+        include("regression/test_safety_net.jl")
+    end
     @testset "Empirical Bayes — Gaussian" begin
         include("regression/test_eb_gaussian.jl")
     end

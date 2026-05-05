@@ -39,9 +39,13 @@ end
 end
 
 @testset "AR1GMRF invalid arguments" begin
-    @test_throws ArgumentError AR1GMRF(5; ρ=1.1, τ=1.0)
-    @test_throws ArgumentError AR1GMRF(5; ρ=-1.0, τ=1.0)
-    @test_throws ArgumentError AR1GMRF(5; ρ=0.5, τ=-1.0)
+    # Parametric domain violations (ρ, τ) → DomainError so the LGM safety
+    # net can recover when LBFGS overshoots into ρ ≥ 1 or τ ≤ 0; the
+    # static shape check (n) stays as ArgumentError because no θ-step
+    # can produce it.
+    @test_throws DomainError AR1GMRF(5; ρ=1.1, τ=1.0)
+    @test_throws DomainError AR1GMRF(5; ρ=-1.0, τ=1.0)
+    @test_throws DomainError AR1GMRF(5; ρ=0.5, τ=-1.0)
     @test_throws ArgumentError AR1GMRF(1; ρ=0.5, τ=1.0)
 end
 

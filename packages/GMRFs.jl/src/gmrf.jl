@@ -234,8 +234,8 @@ struct AR1GMRF{T <: Real} <: AbstractGMRF
 end
 function AR1GMRF(n::Integer; ρ::Real, τ::Real=1.0)
     n ≥ 2 || throw(ArgumentError("AR1GMRF requires n ≥ 2, got $n"))
-    -1 < ρ < 1 || throw(ArgumentError("AR1GMRF requires ρ ∈ (-1, 1), got ρ=$ρ"))
-    τ > 0 || throw(ArgumentError("AR1GMRF requires τ > 0, got τ=$τ"))
+    -1 < ρ < 1 || throw(DomainError(ρ, "AR1GMRF requires ρ ∈ (-1, 1)"))
+    τ > 0 || throw(DomainError(τ, "AR1GMRF requires τ > 0"))
     T = typeof(float(ρ * τ))
     return AR1GMRF{T}(Int(n), T(ρ), T(τ))
 end

@@ -143,26 +143,75 @@ already covered in `LatentGaussianModels.jl/test/oracle/`; PR-3's job
 is to prove the macro produces an `_struct_isequal` model for these
 canonical shapes.
 
-### PR-4 — Multi-likelihood + `Copy`
+### PR-4 — Multi-likelihood (tuple-LHS)
 
-`@lgm (y_long, y_surv) ~ ... family = (Gaussian(), Weibull())` lowers
-to a tuple-of-likelihoods constructor with a `LikelihoodMap` keyed by
-the row groupings the user expresses in `data` (long-format with a
-`type` column, or wide-format with two `y_*` LHS terms — design call
-in PR-4's ADR draft).
+**Scope split (recorded 2026-05-05).** PR-4's original scope bundled
+multi-likelihood and `Copy` into one PR. Both are real expansion-
+machinery work — multi-likelihood needs parser + schema + expand
+changes for tuple-LHS, and `Copy` needs a syntax-level decision on
+naming source components in the formula plus `CopyTargetLikelihood`
+plumbing. Splitting keeps each PR scoped to one concept and gives
+`Copy` its own ADR. `Copy` ships as PR-4b below.
 
-`f(...; copy = :name)` resolves `:name` against the named components
-in the formula and emits a `Copy(target_indices)` projector
-augmentation.
+`@lgm (y_long, y_surv) ~ rhs data=df family=(Gaussian(), Weibull())`
+lowers to:
 
-**Tests**: roundtrip on the Phase G Baghfalaki joint
-longitudinal-survival fit. R-INLA's `inla.stack` for that fit is the
-ground truth.
+```julia
+LatentGaussianModel(
+    (Gaussian(), Weibull()),
+    (Intercept(), ...),
+    StackedMapping(
+        (LinearProjector(A), LinearProjector(A)),
+        [1:n, (n+1):(2n)],
+    ),
+)
+```
 
-**ADR-033** (PR-4): multi-likelihood formula syntax. The two
-candidates — tuple-LHS `(y1, y2) ~ ...` vs. R-INLA's per-row `family`
-plus `Y ~ stack(...)` — both have precedent. Recommend tuple-LHS as
-Julia-idiomatic; document R-INLA's stacked-Y form as a fallback.
+The shared RHS is built once into a single sparse `A` (length-n rows);
+each likelihood block wraps the same projector. Observations are
+expected in wide-format — each LHS column has length `n`, the stacked
+observation vector is `vcat(y1, y2, ...)`. Long-format with a `type`
+column is left for a follow-up.
+
+**ADR-033** (PR-4): multi-likelihood formula syntax. Candidates were
+tuple-LHS `(y1, y2) ~ ...` vs. R-INLA's per-row `family` plus
+`Y ~ stack(...)`. Recommendation: ship tuple-LHS as Julia-idiomatic;
+document R-INLA's stacked-Y form as a fallback users can write
+explicitly.
+
+**Per-likelihood RHS variation** (e.g. Baghfalaki joint
+longitudinal-survival, where the survival predictor differs from the
+longitudinal predictor) is not in PR-4 — it requires PR-4b's `Copy`
+plus a syntax for "this f-term applies only to likelihood k", which
+is its own design call.
+
+**Tests**: tuple-LHS roundtrip on `(y1, y2) ~ 1 + f(idx, IID(n))`,
+`(y_g, y_p) ~ 1 + f(idx, IID(n))` matching the
+`test_synthetic_joint_gauss_pois` form, and a 3-likelihood case.
+Macroexpand structural assertions on the tuple-LHS expansion. Error-
+message tests for mismatched lengths and missing LHS columns.
+
+### PR-4b — `Copy` augmentation
+
+`f(...; copy = :name)` resolves `:name` against named f-terms in the
+formula and emits a `Copy(target_indices)` augmentation, wrapping the
+target likelihood with `CopyTargetLikelihood(base, copy_spec)`. The
+LGM core API (`packages/LatentGaussianModels.jl/src/likelihoods/copy.jl`)
+ships in v0.2: `Copy(source_indices; β_prior, β_init, fixed)` and
+`CopyTargetLikelihood(base, copies::Tuple)`.
+
+**ADR-034** (PR-4b): component naming syntax in the formula. Two
+candidates: (a) implicit naming via the column symbol (`f(subject,
+IID(n))` is named `:subject`), (b) explicit `name = :foo` kwarg. Lean
+(a); the column symbol is already unique per f-term in the cases we
+care about (R-INLA's `inla.stack` makes the same assumption). Per-
+likelihood targeting (which Copy goes into which likelihood's
+predictor) needs its own kwarg — `f(subject; copy = :u, target = 2)`
+or similar.
+
+**Tests**: roundtrip on the Phase G Baghfalaki joint longitudinal-
+survival fit shape. R-INLA's `inla.stack` for that fit is the ground
+truth.
 
 ### PR-5 — `replicate` / `group` routing
 

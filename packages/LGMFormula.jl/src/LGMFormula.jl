@@ -34,27 +34,27 @@ include("expand.jl")
 Build a [`LatentGaussianModel`](@ref) from a formula expression bound
 to a `Tables.jl`-compatible source.
 
-# Supported (PR-1)
+# Supported
 
 - `@lgm y ~ 1 data=df family=GaussianLikelihood()` — intercept only.
 - `@lgm y ~ 1 + x1 + x2 data=df family=GaussianLikelihood()` —
   intercept + scalar covariates.
 - `@lgm y ~ 0 + x data=df family=GaussianLikelihood()` —
   no intercept (`-1` also accepted).
-- `@lgm y ~ 1 + f(idx, IID(n)) data=df family=PoissonLikelihood()` —
-  intercept + one random effect.
-- `@lgm y ~ 1 + x + f(idx, IID(n)) data=df family=PoissonLikelihood()` —
-  intercept + covariate + random effect.
+- `@lgm y ~ 1 + f(idx, IID(n)) + f(t, RW1(T)) data=df family=PoissonLikelihood()`
+  — intercept + multiple random effects.
+- `@lgm (y1, y2) ~ 1 + f(idx, IID(n)) data=df family=(GaussianLikelihood(), PoissonLikelihood())`
+  — multi-likelihood tuple-LHS with shared RHS (wide-format).
 
-# Restrictions (PR-1)
+# Restrictions
 
-- The LHS must be a column name (`Symbol`).
 - Fixed-effects terms must be bare column symbols. Transformations
   (`log(x)`, `x1*x2`, factor expansions) are not yet supported.
-- A single `f(col, Component)` per formula. The `col` must be a
-  column of integers in `1:length(Component)`. Multiple `f(...)` terms
-  ship in PR-3.
-- Single likelihood. Multi-likelihood (`(y1, y2) ~ ...`) ships in PR-4.
+- The `col` of an `f(col, Component)` term must be a column of
+  integers in `1:length(Component)`.
+- Tuple-LHS columns must all have the same length (wide-format only;
+  long-format with a `type` column is left for a follow-up).
+- `Copy(...)` augmentation (`f(...; copy = :name)`) ships in PR-4b.
 
 # Expansion
 

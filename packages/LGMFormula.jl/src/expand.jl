@@ -1,35 +1,56 @@
 # Build the AST returned by `@lgm`. The expansion is an explicit
 # `LatentGaussianModel(...)` constructor call: components and
-# likelihood appear literally; only the design matrix construction is
-# deferred to runtime (it depends on the data).
+# likelihood appear literally; only the design matrix / mapping
+# construction is deferred to runtime (it depends on the data).
 
 """
-    _build_expansion(lhs, has_intercept, covariates, randoms,
-                     data_expr, family_expr) -> Expr
+    _build_expansion(lhs::Vector{Symbol}, has_intercept, covariates,
+                     randoms, data_expr, family_expr) -> Expr
 
 Return the `Expr` that `@lgm` expands to. Module references use
 absolute interpolation (`\$LatentGaussianModels.Intercept()`,
 `\$LGMFormula._build_design_matrix(...)`) so the expansion resolves
 regardless of the caller's `using` imports.
+
+Single-LHS expands to a `LinearProjector`-equivalent `SparseMatrixCSC`
+(LGM auto-wraps). Multi-LHS expands to a `StackedMapping` with one
+`LinearProjector(A)` block per likelihood, sharing the RHS-built `A`.
 """
-function _build_expansion(lhs::Symbol, has_intercept::Bool,
+function _build_expansion(lhs::Vector{Symbol}, has_intercept::Bool,
         covariates::Vector{Symbol}, randoms::Vector{Tuple{Symbol, Any}},
         data_expr, family_expr)
     components_expr = _components_tuple_expr(has_intercept, covariates, randoms)
     randoms_vec_expr = _randoms_vec_expr(randoms)
     covariates_vec_expr = _covariates_vec_expr(covariates)
 
+    if length(lhs) == 1
+        mapping_expr = :(
+            $LGMFormula._build_design_matrix(
+                $data_expr,
+                $(QuoteNode(first(lhs))),
+                $has_intercept,
+                $covariates_vec_expr,
+                $randoms_vec_expr,
+            )
+        )
+    else
+        lhs_vec_expr = Expr(:vect, [QuoteNode(c) for c in lhs]...)
+        mapping_expr = :(
+            $LGMFormula._build_multi_likelihood_mapping(
+                $data_expr,
+                $lhs_vec_expr,
+                $has_intercept,
+                $covariates_vec_expr,
+                $randoms_vec_expr,
+            )
+        )
+    end
+
     return :(
         $LatentGaussianModels.LatentGaussianModel(
             $family_expr,
             $components_expr,
-            $LGMFormula._build_design_matrix(
-                $data_expr,
-                $(QuoteNode(lhs)),
-                $has_intercept,
-                $covariates_vec_expr,
-                $randoms_vec_expr,
-            ),
+            $mapping_expr,
         )
     )
 end

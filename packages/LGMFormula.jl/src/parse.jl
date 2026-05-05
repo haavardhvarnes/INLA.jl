@@ -43,23 +43,40 @@ function _record_kw!(opts::Dict{Symbol, Any}, kw)
 end
 
 """
-    _parse_formula(expr) -> (lhs::Symbol, rhs)
+    _parse_formula(expr) -> (lhs::Vector{Symbol}, rhs)
 
-Split `lhs ~ rhs` into LHS symbol and RHS expression.
-
-PR-1 restricts the LHS to a single `Symbol`; tuple-LHS for joint
-likelihoods ships in PR-4 (ADR-033).
+Split `lhs ~ rhs` into LHS column names and RHS expression. The LHS
+is always returned as a `Vector{Symbol}` (length 1 for single-likelihood,
+length k > 1 for multi-likelihood tuple-LHS `(y1, y2, ...) ~ rhs`,
+ADR-033).
 """
 function _parse_formula(expr)
     if !(expr isa Expr && expr.head === :call && length(expr.args) == 3 &&
          expr.args[1] === :~)
         error("@lgm: expected a formula `lhs ~ rhs`, got `$expr`")
     end
-    lhs = expr.args[2]
-    lhs isa Symbol ||
-        error("@lgm: LHS must be a column name (Symbol). Joint-likelihood tuple-LHS is not yet supported (PR-4).")
+    lhs_expr = expr.args[2]
     rhs = expr.args[3]
+    lhs = _parse_lhs(lhs_expr)
     return lhs, rhs
+end
+
+function _parse_lhs(lhs_expr)
+    if lhs_expr isa Symbol
+        return Symbol[lhs_expr]
+    elseif lhs_expr isa Expr && lhs_expr.head === :tuple
+        names = Symbol[]
+        for a in lhs_expr.args
+            a isa Symbol ||
+                error("@lgm: tuple-LHS must contain column names (Symbol), got `$a`")
+            push!(names, a)
+        end
+        length(names) ≥ 1 ||
+            error("@lgm: tuple-LHS must contain at least one column name")
+        return names
+    else
+        error("@lgm: LHS must be a column name `y` or a tuple of column names `(y1, y2, ...)`, got `$lhs_expr`")
+    end
 end
 
 """

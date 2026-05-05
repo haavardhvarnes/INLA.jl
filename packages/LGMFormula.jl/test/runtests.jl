@@ -13,4 +13,5 @@ include("test_utils.jl")
     include("regression/test_error_messages.jl")
     include("regression/test_components.jl")
     include("regression/test_multi_f.jl")
+    include("regression/test_multi_likelihood.jl")
 end

@@ -102,6 +102,44 @@ function _validate_index_column(col, col_name::Symbol, n_levels::Int)
 end
 
 """
+    _build_multi_likelihood_mapping(data, lhs, has_intercept, covariates, randoms)
+        -> StackedMapping
+
+Build a row-partitioned `StackedMapping` for tuple-LHS multi-likelihood
+models. The shared RHS produces a single sparse `A`; each likelihood
+block wraps the same `LinearProjector(A)`. Observation rows are
+partitioned contiguously: block `k` owns rows `((k-1)·n + 1):(k·n)`.
+
+All columns in `lhs` must have equal length `n` (wide-format only —
+long-format with a `type` column is left for a follow-up).
+"""
+function _build_multi_likelihood_mapping(data, lhs::AbstractVector{Symbol},
+        has_intercept::Bool, covariates::AbstractVector,
+        randoms::AbstractVector)
+    Tables.istable(data) ||
+        throw(ArgumentError("@lgm: `data` is not a Tables.jl-compatible source (got $(typeof(data)))"))
+    cols = Tables.columns(data)
+    names = Tuple(Tables.columnnames(cols))
+    n = nothing
+    for name in lhs
+        name in names ||
+            throw(ArgumentError("@lgm: outcome column `$(name)` not found in `data`. Available columns: $(names)"))
+        col_len = length(Tables.getcolumn(cols, name))
+        if n === nothing
+            n = col_len
+        elseif col_len != n
+            throw(DimensionMismatch("@lgm: tuple-LHS columns must have equal length; column `$(name)` has length $(col_len), but `$(first(lhs))` has length $(n)"))
+        end
+    end
+    A = _build_design_matrix(data, first(lhs), has_intercept, covariates, randoms)
+    proj = LatentGaussianModels.LinearProjector(A)
+    k = length(lhs)
+    blocks = ntuple(_ -> proj, k)
+    rows = [((i - 1) * n + 1):(i * n) for i in 1:k]
+    return LatentGaussianModels.StackedMapping(blocks, rows)
+end
+
+"""
     lgmformula(data; lhs, intercept = true, covariates = Symbol[],
                randoms = [], family) -> LatentGaussianModel
 
@@ -112,26 +150,39 @@ would produce.
 # Arguments
 
 - `data`: a `Tables.jl`-compatible source.
-- `lhs::Symbol`: outcome column name.
+- `lhs::Union{Symbol, AbstractVector{Symbol}}`: outcome column name(s).
+  A vector triggers tuple-LHS multi-likelihood; `family` must then be
+  a tuple of likelihoods of matching length.
 - `intercept::Bool = true`: whether to include `Intercept()`.
 - `covariates::Vector{Symbol} = Symbol[]`: scalar fixed-effect column
   names. Becomes `FixedEffects(length(covariates))` if non-empty.
 - `randoms::Vector{<:Tuple{Symbol, AbstractLatentComponent}} = []`:
   list of `(col, component)` pairs for `f(...)` terms.
-- `family::AbstractLikelihood`: observation likelihood.
-
-PR-3 will add a `lgmformula(formula::FormulaTerm, data; ...)` method
-that decomposes a `StatsModels.@formula` into the structured form.
+- `family`: observation likelihood (single-LHS) or tuple of
+  likelihoods (multi-LHS).
 """
 function lgmformula(data;
-        lhs::Symbol,
+        lhs::Union{Symbol, AbstractVector{Symbol}},
         intercept::Bool = true,
         covariates::Vector{Symbol} = Symbol[],
         randoms::AbstractVector = Tuple{Symbol, LatentGaussianModels.AbstractLatentComponent}[],
-        family::LatentGaussianModels.AbstractLikelihood)
-    A = _build_design_matrix(data, lhs, intercept, covariates, randoms)
+        family)
     components = _build_components(intercept, length(covariates), randoms)
-    return LatentGaussianModels.LatentGaussianModel(family, components, A)
+    if lhs isa Symbol
+        family isa LatentGaussianModels.AbstractLikelihood ||
+            throw(ArgumentError("@lgm: single-LHS `lgmformula` requires `family::AbstractLikelihood`, got $(typeof(family))"))
+        A = _build_design_matrix(data, lhs, intercept, covariates, randoms)
+        return LatentGaussianModels.LatentGaussianModel(family, components, A)
+    else
+        family isa Tuple ||
+            throw(ArgumentError("@lgm: tuple-LHS `lgmformula` requires `family::Tuple` of likelihoods, got $(typeof(family))"))
+        length(lhs) == length(family) ||
+            throw(ArgumentError("@lgm: tuple-LHS has $(length(lhs)) columns but `family` has $(length(family)) likelihoods — must match"))
+        all(ℓ -> ℓ isa LatentGaussianModels.AbstractLikelihood, family) ||
+            throw(ArgumentError("@lgm: every entry of `family` must be an `AbstractLikelihood`; got $(map(typeof, family))"))
+        mapping = _build_multi_likelihood_mapping(data, lhs, intercept, covariates, randoms)
+        return LatentGaussianModels.LatentGaussianModel(family, components, mapping)
+    end
 end
 
 function _build_components(has_intercept::Bool, n_covariates::Int,

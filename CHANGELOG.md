@@ -4,6 +4,429 @@ All notable changes to this repository are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.5] — 2026-05-04
+
+Phase L is the marquee deliverable: `UserComponent` (R-INLA `rgeneric`
+equivalent) lands as the structural extension hook for downstream users,
+and `FullLaplace` (R-INLA's `strategy = "laplace"`) closes the
+sharply-non-Gaussian-latent gap on the new Brunei oracle. Phases I-A tail
+(IID3D / PCCor1 / Generic2), I-B (MEB / MEC), I-C (Replicate / Group),
+J (six new likelihoods plus PCGevtail / BetaPrior), and K (posterior
+tooling — sampling, predictive, PSIS-LOO, `refine_hyperposterior`,
+`pp_check`) form the body. Patch release on `LatentGaussianModels.jl`
+and the `INLA.jl` umbrella; `GMRFs.jl`, `INLASPDE.jl`, and
+`INLASPDERasters.jl` are unchanged at v0.1.1. Oracle suite expands from
+21 to 28 fixtures.
+
+### Added
+
+**Phase L — `UserComponent` and `FullLaplace`**
+
+- **`UserComponent(callable; n, n_hyper)`** (PR-2, ADR-025) — the R-INLA
+  `rgeneric` equivalent: a one-line callable wrapper around the
+  `AbstractLatentComponent` contract that lets users port `rgeneric`
+  models without subtyping. The callable returns a `NamedTuple` with
+  required key `:Q` (sparse precision) and optional keys `:log_prior`,
+  `:log_normc`, `:constraint`, all with defaults so future-extending
+  the namedtuple is non-breaking. Constraint is read once at
+  construction (θ-independent, mirroring R-INLA `rgeneric`'s
+  `extraconstr`); precision and log-NC are re-evaluated at every θ.
+  `cgeneric` is deliberately out of scope — users with C precision
+  routines call them via `@ccall` inside the Julia closure.
+  Implementation:
+  [`src/components/user_component.jl`](packages/LatentGaussianModels.jl/src/components/user_component.jl).
+- **`FullLaplace <: AbstractMarginalStrategy`** (PR-3 / PR-4) — R-INLA's
+  `strategy = "laplace"`, the per-`x_i` refitted Laplace that closes
+  the sharply-non-Gaussian-latent gap. Implemented via constraint
+  injection: each grid point stacks `e_i^T x = a` onto the model-level
+  constraint and reuses the existing kriging machinery in
+  `inference/laplace.jl`. PR-4 ships warm-start Newton (each grid
+  point bootstraps from the previous fit's mode, collapsing inner
+  iterations from ~5–10 cold-start to 1–2) and adaptive truncation
+  (sweep stops once running per-θ log-density drops 25 nats below
+  the running max — a `< 1.4e-11` factor of the peak). Implementation:
+  [`src/inference/full_laplace.jl`](packages/LatentGaussianModels.jl/src/inference/full_laplace.jl);
+  bench harness at
+  [`bench/full_laplace.jl`](packages/LatentGaussianModels.jl/bench/full_laplace.jl).
+- **Brunei oracle** (PR-5,
+  [`test/oracle/test_synthetic_brunei.jl`](packages/LatentGaussianModels.jl/test/oracle/test_synthetic_brunei.jl)) —
+  Phase L acceptance gate: Poisson + Generic0 (RW1 + sum-to-zero) on a
+  low-count, sharply non-Gaussian regime (n=24, E_i=1, most
+  y_i ∈ {0, 1, 2, 3}), with a tight `loggamma(100, 100)` prior pinning
+  τ ≈ 1. Asserts per-coordinate `FullLaplace` mean/sd against R-INLA's
+  `strategy = "laplace"` reference fit, hyperposterior τ-mean within
+  Phase F's 20% relative band, mlik finite within 5%, and FL ≠ SL on
+  at least one coordinate (regression guard for the constraint-injection
+  seam). Modern R-INLA's post-Laplace VB correction tightens SDs by a
+  few percent — Julia's pure FL leaves this systematic offset
+  uncorrected, so the SD tolerance is widened accordingly.
+- **`crw2` `UserComponent` tutorial** (PR-6) at
+  [`docs/src/vignettes/rgeneric-tutorial.md`](docs/src/vignettes/rgeneric-tutorial.md) —
+  end-to-end implementation of R-INLA's `model = "crw2"` (continuous-time
+  RW2 on irregularly-spaced knots) as a 30-line `UserComponent`. Closed-
+  form precision `Q(τ; s) = τ · Dᵀ W D` derived from the standardised
+  second-difference representation, verified against the built-in
+  `RW2(n)` on a regular grid (max abs diff = machine zero), and pinned
+  against R-INLA at Phase H tolerances on a synthetic
+  `1 + s + f(idx, model = "crw2")` fit. Companion extension guide at
+  [`docs/src/extending.md`](docs/src/extending.md) documents the two
+  paths (`UserComponent` vs subtyping `AbstractLatentComponent`
+  directly) as first-class alternatives.
+
+**Phase K — diagnostics and posterior tools**
+
+- **`posterior_sample(rng, res, model; n_samples)`** (PR-2) — joint
+  draws of `(x, θ) ∼ π̂(· | y)` from the CCD/grid mixture. Pick `θ_k`
+  with weight `res.θ_weights`, draw `x | θ_k ∼ N(mode_k, H_k⁻¹)` via
+  the cached Cholesky (with hard-linear-constraint kriging correction
+  when applicable). Complements the existing `posterior_samples_η`
+  (which returns `η = A x` and is the right tool for WAIC / CPO / PIT)
+  with the joint-`x` building block needed for random-effect contrast
+  posteriors and Stan/NUTS triangulation.
+- **`refine_hyperposterior(res, model, y; n_grid = 15, span = 4.0,
+  skewness_correction = true)`** (PR-3) — R-INLA `inla.hyperpar`
+  equivalent. Re-runs the integration stage against a denser `Grid`
+  design without redoing the outer LBFGS / FD-Hessian pass; reuses
+  `res.θ̂` and `res.Σθ` from the input fit. Closes the
+  IntegratedNestedLaplace.jl-documented heavy-tail undersampling
+  failure mode (Brunei pathology). Defaults differ from `inla()`'s
+  (5×5 grid, no skewness correction) because the user calls
+  `refine_hyperposterior` precisely when the default is too coarse.
+  Refactors `fit(::INLA)` to factor the integration stage into a
+  private `_inla_integrate` helper shared with `refine_hyperposterior`.
+- **`posterior_predictive(rng, res, model; n_samples)`** (PR-4) —
+  linear-predictor posterior predictive built on top of
+  `posterior_sample`. Returns `(x, θ, η)` with
+  `η[:, s] = mapping * draws.x[:, s]`; mapping accepts any
+  `AbstractObservationMapping` (`LinearProjector`, `IdentityMapping`,
+  `StackedMapping`) or a raw `AbstractMatrix` (auto-wrapped). The
+  ADR-017 observation-mapping seam from Phase G is the load-bearing
+  abstraction.
+- **`posterior_predictive_y` + `sample_y` likelihood hook** (PR-6) —
+  extends the predictive with response-scale draws `y_rep ∼ p(y | η, θ)`.
+  `sample_y(rng, ℓ, η, θ)` is a new method on `AbstractLikelihood`;
+  closed-form samplers ship for `GaussianLikelihood`,
+  `PoissonLikelihood`, `BinomialLikelihood`,
+  `NegativeBinomialLikelihood{LogLink}`, and `GammaLikelihood{LogLink}`.
+  The default raises `ArgumentError`, so unsupported families
+  (censored survival, zero-inflated) error explicitly.
+  `pp_check(rng, res, model, y_obs; n_samples = 400)` is the thin
+  convenience wrapper that returns `(y, y_rep::Matrix)` ready for
+  Makie `density!` overlays.
+- **PSIS-LOO** (PR-5) via the
+  [`PSIS.jl`](https://github.com/arviz-devs/PSIS.jl) weakdep extension
+  (`LGMPSISExt`). Pareto-smoothed importance sampling estimate of LOO
+  elpd, supplementing the harmonic-mean `cpo` from Phase H. Surfaces
+  per-observation `pareto_k` as a reliability diagnostic — values
+  above 0.7 flag IS failure that the harmonic-mean `cpo` silently
+  absorbs (Vehtari et al. 2017, 2024). `psis_loo` is exported as a
+  no-method stub from
+  [`src/inference/diagnostics.jl`](packages/LatentGaussianModels.jl/src/inference/diagnostics.jl);
+  the extension fires on `using PSIS`.
+- **Asymmetric per-axis skewness corrections for `Grid`** (PR-1) —
+  optional `stdev_corr_pos` / `stdev_corr_neg` on `Grid` and the new
+  `compute_skewness_corrections(log_post, θ̂, Σ)` helper implement
+  Rue-Martino-Chopin (2009) §6.5: along each eigen-axis of the
+  Gaussian approximation, the design point spacing is stretched on
+  each side to match the actual log-posterior drop, so heavy-tailed
+  log-precision posteriors get nodes placed where the mass lives.
+  Stretches floored at 0.05, capped at 5.0. Quadrature weights
+  remain standard-normal — IS reweight in the surrounding fit
+  absorbs the proposal mismatch. `INLA(skewness_correction = true)`
+  is the opt-in flag; default is `false` to match R-INLA's
+  `control.inla$skew.corr.positive = 1.0`.
+
+**Phase J — six new likelihoods, plus PCGevtail / BetaPrior**
+
+- **`BetaLikelihood`** (PR-1) — R-INLA's mean-dispersion form
+  `y | μ, φ ~ Beta(μφ, (1−μ)φ)` with `μ = expit(η)`, single
+  hyperparameter `θ = log φ`. Closed-form ∇_η and ∇²_η via digamma /
+  trigamma. Default hyperprior `GammaPrecision(1, 0.01)` matches
+  R-INLA's `family = "beta"` `loggamma(1, 0.01)` bit-for-bit. Only
+  `LogitLink` accepted; `LogLink`/`IdentityLink` raise `ArgumentError`.
+  Implementation:
+  [`src/likelihoods/beta.jl`](packages/LatentGaussianModels.jl/src/likelihoods/beta.jl).
+- **`BetaBinomialLikelihood`** (PR-2) — R-INLA's mean-overdispersion
+  form `y | n, μ, ρ ~ BetaBinomial(n, μs, (1−μ)s)` with
+  `s = (1−ρ)/ρ`, `θ = logit(ρ)`. Closed-form derivatives via digamma /
+  trigamma. Default hyperprior `GaussianPrior(0, √2)` matches R-INLA's
+  `family = "betabinomial"` default. Implementation:
+  [`src/likelihoods/betabinomial.jl`](packages/LatentGaussianModels.jl/src/likelihoods/betabinomial.jl).
+- **`StudentTLikelihood`** (PR-3) — scaled Student-t observation model
+  `y = η + ε/√τ`, `ε ~ Student-t(ν)`, two hyperparameters
+  `θ = (log τ, log(ν − 2))`. The `ν > 2` floor matches R-INLA's
+  `family = "T"` and ensures finite variance. Closed-form score and
+  Hessian via the standard t-density expression. Implementation:
+  [`src/likelihoods/studentt.jl`](packages/LatentGaussianModels.jl/src/likelihoods/studentt.jl).
+- **`SkewNormalLikelihood`** (PR-4) — R-INLA `family = "sn"`
+  parameterisation with `θ[1] = log τ` and `θ[2] = logit-skew` mapped
+  to standardised skewness `γ = 0.988 · tanh(θ[2] / 2) ∈ (−0.988,
+  0.988)`. Closed-form gradient and (diagonal) Hessian via the inverse
+  Mills ratio `λ(t) = φ(t)/Φ(t)`, with `Distributions.logpdf` /
+  `logcdf` for tail stability. Recovers Gaussian exactly at `γ = 0`.
+  Implementation:
+  [`src/likelihoods/skewnormal.jl`](packages/LatentGaussianModels.jl/src/likelihoods/skewnormal.jl).
+- **`GEVLikelihood`** (PR-5) — R-INLA `family = "gev"`
+  `F(y) = exp(− [1 + ξ √(τ s) (y − η)]^(−1/ξ))` with `θ[1] = log τ`,
+  `θ[2] = ξ / xi_scale` (default `xi_scale = 0.1`, matching R-INLA's
+  `gev.scale.xi`). Per-observation `weights` carry R-INLA's `scale`
+  argument as a precision multiplier. Gumbel-limit guard at
+  `|ξ| < 1.0e-6` keeps derivatives continuous at `ξ = 0`. Note: the
+  GEV density is not globally log-concave; pick `initial_η` well
+  inside the support. Implementation:
+  [`src/likelihoods/gev.jl`](packages/LatentGaussianModels.jl/src/likelihoods/gev.jl).
+- **`POMLikelihood`** (PR-6) — R-INLA `family = "pom"` proportional-
+  odds ordinal regression with `K − 1` internal-scale cut points
+  carried as likelihood hyperparameters under a single Dirichlet
+  prior on the implied class probabilities at `η = 0`. Closed-form
+  derivatives for the cumulative-logit link (globally log-concave in
+  η). The Jacobian from `θ → α → π` is included in full — R-INLA's
+  internal Dirichlet omits this correction (documented in
+  `inla.doc("pom")`), so absolute mlik values differ between Julia
+  and R-INLA by a fixed θ-independent constant while every posterior
+  moment matches. Implementation:
+  [`src/likelihoods/pom.jl`](packages/LatentGaussianModels.jl/src/likelihoods/pom.jl).
+- **Multinomial via independent-Poisson reformulation** (PR-7,
+  ADR-024) — categorical / multinomial regression supported through
+  R-INLA's Multinomial-Poisson trick (Baker 1994; Chen 1985), not as
+  a new likelihood type. Helpers `multinomial_to_poisson(Y;
+  class_names)` and `multinomial_design_matrix(helper, X;
+  reference_class)` in
+  [`src/multinomial.jl`](packages/LatentGaussianModels.jl/src/multinomial.jl)
+  reshape an `n × K` count matrix into long-format
+  `(y, row_id, class_id, …)` with row-major layout, and build the
+  sparse class-specific covariate block with corner-point β_K = 0
+  identifiability. Per-row nuisance intercept attaches as
+  `IID(n_rows; τ_init, fix_τ = true)` — `IID` gains both kwargs,
+  mirroring R-INLA's `prec = list(initial = ..., fixed = TRUE)`. With
+  `fix_τ = true`, `nhyperparameters(c) == 0`. The `fit(::INLA)` fast
+  path for `n_hyperparameters(model) == 0` skips θ-mode optimisation
+  and grid integration entirely — a single Laplace at
+  `θ = Float64[]` is the exact posterior. Vignette at
+  [`docs/src/vignettes/multinomial.md`](docs/src/vignettes/multinomial.md).
+- **`PCGevtail(λ, interval; xi_scale)`** — penalised-complexity prior
+  on the GEV tail (shape) parameter `ξ ∈ [low, high]` (Opitz et al.
+  2018), reference `ξ = 0` (Gumbel). Linearised PC distance
+  `d(ξ) = ξ`; user-scale density matches `inla.pc.dgevtail`; internal
+  scale `θ = ξ / xi_scale` matches `GEVLikelihood`. Defaults
+  `λ = 7, interval = (0, 1), xi_scale = 0.1` match R-INLA composed
+  with `gev.scale.xi`. Implementation:
+  [`src/priors/pc_gevtail.jl`](packages/LatentGaussianModels.jl/src/priors/pc_gevtail.jl).
+- **`BetaPrior(a, b)`** — generic Beta(a, b) prior on a bounded-ratio
+  user-scale parameter `p ∈ (0, 1)` via the logit transform.
+  Distributions.jl-friendly entry point complementing the existing
+  `LogitBeta`. Implementation:
+  [`src/priors/beta.jl`](packages/LatentGaussianModels.jl/src/priors/beta.jl).
+- **Six new R-INLA oracle fixtures**: `synthetic_beta`,
+  `synthetic_betabinomial`, `synthetic_studentt`,
+  `synthetic_skewnormal`, `synthetic_gev`, `synthetic_pom`,
+  `synthetic_multinomial` — one per likelihood family, all under
+  [`test/oracle/`](packages/LatentGaussianModels.jl/test/oracle/).
+
+**Phase I-A tail — multivariate IID continued**
+
+- **`IID3D` via LKJ stick-breaking** (PR-1b) — extends
+  `IIDND_Sep{N}` to `N = 3` with the canonical-partial-correlation
+  parameterisation: 3 log-precisions + 3 atanh CPCs. `Λ = G'G` with
+  `G = L⁻¹ · D_τ^{1/2}` where `L` is the LKJ stick-breaking Cholesky
+  factor; log NC generalises the N=2 case via `_logcosh` over the
+  3 CPCs. Constructor caps at `N ≤ 3` per ADR-022 (separable form).
+  `IID3D(n; …)` ergonomic alias ships alongside. Implementation:
+  [`src/components/iidnd.jl`](packages/LatentGaussianModels.jl/src/components/iidnd.jl).
+- **`PCCor1` PC prior** (PR-1c) — PC prior on a correlation
+  `ρ ∈ (-1, 1)` with reference at `ρ = 1`, mirroring R-INLA's
+  `pc.cor1` (Sørbye-Rue 2017). The λ calibration root has no closed
+  form — solved by log-bisection on the monotone calibration
+  function. Routes `log(1 ± ρ)` and `√(1 - ρ)` through
+  `softplus(±2θ)` to stay finite at saturation (`|θ| ≳ 19`). Available
+  as opt-in `ρprior = PCCor1(...)` for `AR1`. Per ADR-022, `PCCor1` is
+  *not* the bivariate-IID correlation prior (which uses `PCCor0`,
+  reference at `ρ = 0`); the name reflects R-INLA's reservation of
+  `pc.cor1` for the AR(1) lag-1 prior. Implementation:
+  [`src/priors/pc_cor1.jl`](packages/LatentGaussianModels.jl/src/priors/pc_cor1.jl).
+- **`Generic2`** (PR-1d) — R-INLA `model = "generic2"`: hierarchical
+  `(u, v)` joint Gaussian with `v ~ N(0, (τ_v C)⁻¹)` and
+  `u | v ~ N(v, (τ_u I)⁻¹)`, block precision
+  `Q = [[τ_u I, -τ_u I]; [-τ_u I, τ_u I + τ_v C]]`. Hyperparameter
+  ordering matches R-INLA (`θ_1 = log τ_v, θ_2 = log τ_u`).
+  Schur-complement-derived
+  `½ log|Q|_+ = ½ n log τ_u + ½ (n − rd) log τ_v + ½ log|C|_+`; the
+  user-independent `½ log|C|_+` is dropped per the
+  F_GENERIC0/F_BYM2 "up to a constant" convention. `scale_model =
+  true` applies the Sørbye-Rue geometric-mean scaling to `C`.
+  Implementation:
+  [`src/components/generic2.jl`](packages/LatentGaussianModels.jl/src/components/generic2.jl).
+- **`IID2D` mlik gap closed (Phase F.5 tail)** — the ~8 nat gap that
+  v0.1.4 documented as `isfinite`-only was a setup mismatch, not a
+  `2diid` normalising-constant adjustment. With R's `y ~ -1 +
+  intercept_1 + intercept_2 + …` convention, R-INLA does not
+  auto-insert an improper intercept; switching the Julia oracle to
+  `Intercept(prec = 1.0e-3, improper = false) × 2` matches. Per-
+  intercept offset verified empirically as `½ log(1000) = 3.454`
+  nats. Residual gap drops to ~1.5 nats (1.8% relative on
+  `mlik_R = -85.59`); assertion tightened to `_rel_iid2d(...) <
+  0.05`.
+
+**Phase I-B — measurement error (ADR-023)**
+
+- **`MEB(values; scale, τ_u_prior, τ_u_init)`** (PR-2b) — R-INLA's
+  Berkson measurement-error component `model = "meb"`: proper
+  `N(values, (τ_u · diag(scale))⁻¹)` prior with R-INLA defaults
+  (`GammaPrecision(1, 1.0e-4)` on `log τ_u`, `τ_u_init = log(1000)`).
+  β-via-`Copy` on the receiving likelihood per ADR-021/ADR-023 — the
+  component owns only the latent block; the β-scaling lives on the
+  receiving likelihood. Implementation:
+  [`src/components/meb.jl`](packages/LatentGaussianModels.jl/src/components/meb.jl).
+- **`MEC(values; scale, τ_*_prior, *_init, fix_*)`** (PR-2c) —
+  R-INLA's classical measurement-error component `model = "mec"`:
+  proper Gaussian prior `x ~ N(μ̂(θ), Q̂(θ)⁻¹)` with the conjugate-
+  Gaussian Berkson tie folded in: `Q̂ = τ_x I + τ_u D`,
+  `μ̂ = Q̂⁻¹ (τ_x μ_x 1 + τ_u D · values)`. Three component
+  hyperparameters (`log τ_u`, `μ_x`, `log τ_x`) with per-slot
+  `fix_*` toggles preserving R-INLA's "all default-fixed" pattern.
+  Demonstrates the slope-attenuation phenomenon: naïve OLS shrinks
+  by `τ_u / (τ_u + τ_x)`, while `MEC` recovers the truth.
+  Implementation:
+  [`src/components/mec.jl`](packages/LatentGaussianModels.jl/src/components/mec.jl).
+- **`prior_mean(c, θ)` promoted to load-bearing** in the Laplace
+  Newton loop. Gradient, log-joint, and log-marginal now use
+  `Q (x − μ)` instead of `Q x`; the new `joint_prior_mean(m, θ)`
+  helper stacks per-component prior means along
+  `m.latent_ranges`. No-op for v0.1 zero-mean components, but
+  required for `MEB` (`μ = values`) and `MEC` (`μ` is θ-dependent
+  via the conjugate-Gaussian update). Touches
+  [`src/inference/laplace.jl`](packages/LatentGaussianModels.jl/src/inference/laplace.jl)
+  and
+  [`src/model.jl`](packages/LatentGaussianModels.jl/src/model.jl).
+- **Measurement-error regression vignette** at
+  [`docs/src/vignettes/measurement-error-regression.md`](docs/src/vignettes/measurement-error-regression.md) —
+  walks through both flavours, including the OLS-attenuation
+  comparison and the structural-model variant of Muff et al. (2015)
+  with `τ_x` left free.
+
+**Phase I-C — replicate / group**
+
+- **`Replicate(component, n_replicates)`** (PR-3a) — stacks
+  `n_replicates` independent copies of an inner
+  `AbstractLatentComponent` sharing one hyperparameter block,
+  mirroring R-INLA's `f(idx, model = M, replicate = id)` for
+  uniformly-sized panels. Length scales as
+  `n_replicates · length(component)`; θ slot count is unchanged
+  (the prior lives on a single shared θ block, *not* scaled by
+  `n_replicates`). Precision is `blockdiag(Q_inner, …, Q_inner)`;
+  `prior_mean` repeats the inner; constraints block-stack onto a
+  block-diagonal `A`; `log_NC` is `n_replicates · log_NC(inner)`
+  (factorises exactly); `gmrf` rankdef multiplies, so intrinsic
+  stacks (Besag, RW) inherit the correct null-space dimension.
+  Implementation:
+  [`src/components/replicate.jl`](packages/LatentGaussianModels.jl/src/components/replicate.jl).
+- **`Group(components | factory, group_id)`** (PR-3b) — generalises
+  `Replicate` to non-uniform sizes: a single shared θ block across
+  an arbitrary mix of inner components (e.g. unequal-length AR1
+  panels for subjects with different visit counts). Vector form is
+  the primary API; `Group(factory, group_id)` is the convenience
+  overload that counts members per integer label. Inner constructor
+  enforces the shared-θ contract by checking that all components
+  have the same `nhyperparameters`. Implementation:
+  [`src/components/group.jl`](packages/LatentGaussianModels.jl/src/components/group.jl).
+- **Replicate(AR1) R-INLA oracle** (PR-3c,
+  [`test/oracle/test_synthetic_replicate_ar1.jl`](packages/LatentGaussianModels.jl/test/oracle/test_synthetic_replicate_ar1.jl)) —
+  `R = 30` panels of length `n = 20` (600 observations) sharing
+  `(τ, ρ)`, fit by both Julia and R-INLA's
+  `f(t, model = "ar1", replicate = id)`. Tolerances: τ_x within
+  10% relative, ρ within 0.05 absolute, mlik within 2% relative.
+
+### Changed
+
+- **ADR-026: `AbstractMarginalStrategy` type-dispatch refactor**
+  (Phase L PR-1) — the symbol-keyed `latent_strategy = :gaussian |
+  :simplified_laplace` knob on
+  [`INLA(...)`](packages/LatentGaussianModels.jl/src/inference/inla.jl),
+  [`posterior_marginal_x(...)`](packages/LatentGaussianModels.jl/src/inference/marginals.jl),
+  and `refine_hyperposterior(...)` is promoted to a multiple-dispatch
+  type hierarchy: `Gaussian()`, `SimplifiedLaplace()`,
+  `FullLaplace(n_grid, span)`. A new strategy adds methods on
+  `_integration_mean_shift` (integration-stage hook) and
+  `_density_skewness` (per-coordinate marginal hook) instead of
+  another `if` arm. A symbol shim `_resolve_marginal_strategy(::Symbol)`
+  mirrors `_resolve_scheme` so legacy `:gaussian` /
+  `:simplified_laplace` keep working unchanged — no migration impact
+  for existing code. The two facets of `SimplifiedLaplace` (mean
+  shift in integration, Edgeworth in marginals) dispatch on the
+  same type via different methods, preserving their semantic
+  independence per ADR-016. Sets the seam Phase L PR-3 plugs
+  `FullLaplace` into.
+- **`UserComponent` extension guide** at
+  [`docs/src/extending.md`](docs/src/extending.md) — documents the
+  two extension paths (`UserComponent` vs subtyping
+  `AbstractLatentComponent` directly) as first-class alternatives,
+  not tiered fallbacks. Subtyping remains the right tool for
+  component-specific `prior_mean(c, θ)` overrides (`MEC`-style
+  shifted priors), custom `gmrf(c, θ)` factorisations, and
+  lazy/structured precision matrices that don't fit
+  `SparseMatrixCSC`.
+
+### Fixed
+
+- **`fit(::INLA)` fast path for `n_hyperparameters(model) == 0`**
+  (Phase J PR-7) — skips θ-mode optimisation and θ-grid integration
+  when the model has no free hyperparameters; a single Laplace at
+  `θ = Float64[]` is the exact posterior. Triggered by the
+  multinomial-via-Poisson reformulation (`IID(...; fix_τ = true)`
+  + class-by-covariate `FixedEffects`), but benefits any future
+  zero-hyperparameter model.
+- **JET narrowing on `integration_nodes(::Grid, …)`** (Phase K PR-3)
+  — hoist `scheme.stdev_corr_pos` / `…_neg` into typed
+  `Vector{Float64}` locals before the per-point comprehension so
+  the inner closure is inferred without the
+  `Union{Nothing, Vector{Float64}}` field type leaking through.
+  Functional behaviour unchanged.
+- **Phantom plan-doc link cleanup** (Phase L PR-7) — strip references
+  to a never-written `phase-i-and-onwards-mighty-emerson.md` from
+  the changelog, the Phase I-A IID2D ADR cross-reference list, and
+  two vignette pointers. Replaced with "tracked separately as
+  post-v0.1 work" or removed where the heading already named the
+  phase.
+
+### Known limitations
+
+- **Marginal log-likelihood gap on `weibullsurv`, `lognormalsurv`,
+  `gammasurv`, and `coxph` oracles.** Carried forward unchanged from
+  v0.1.4. Phase F.5 excavation (2026-05-02) traced this to a
+  polynomial-form Laplace approximation in R-INLA's `GMRFLib` that
+  differs from Julia's textbook formula at three points: the cubic
+  contribution to the centered polynomial (`+⅙ x0³ dddf` vs the
+  strict-Taylor `−⅙`), a modified Hessian carrying an `η̂·dddf`
+  correction, and `*logdens` evaluated at sample = 0 rather than at
+  the posterior mode. Closure requires modifying
+  [`src/inference/laplace.jl`](packages/LatentGaussianModels.jl/src/inference/laplace.jl);
+  deferred to v0.3 per the Phase Q rolling plan. Fixed-effect and
+  hyperparameter posteriors agree tightly with R-INLA on these
+  oracles. Oracle tests assert `isfinite(log_marginal)` while the
+  gap is being characterised.
+- **`FullLaplace` per-coordinate runtime is structurally above the
+  replan's aspirational ≤ 5× `SimplifiedLaplace` target.** SL is
+  closed-form per grid point (~µs); FL refits a constrained Laplace
+  per grid point (~100µs minimum even with rank-1 CHOLMOD updates and
+  per-`(θ, i)` caching). The Phase L acceptance gate is correctness
+  against the Brunei oracle (PR-5), not the per-coordinate timing
+  ratio. Future perf work (rank-1 + caching) can compress the ratio
+  by ~2-3× but cannot reach single digits — see
+  [`bench/README.md`](packages/LatentGaussianModels.jl/bench/README.md).
+- **Brunei FL SD systematic offset.** Modern R-INLA (25.10.19)'s
+  post-Laplace VB correction tightens SDs by a few percent on the
+  Brunei regime; Julia's pure FL leaves this offset uncorrected, so
+  the Brunei oracle widens the SD tolerance accordingly. The mean
+  posterior matches at standard tolerance.
+
+### Validated against
+
+R-INLA `25.10.19`, R 4.5.x. Oracle suite expanded from 21 (v0.1.4) to
+28 fixtures across
+[`test/oracle/`](packages/LatentGaussianModels.jl/test/oracle/).
+Fixture generation scripts under
+[`scripts/generate-fixtures/`](scripts/generate-fixtures/).
+
 ## [v0.1.4] — 2026-05-02
 
 Phase I-A PR-1a. Patch release on `LatentGaussianModels.jl` and the

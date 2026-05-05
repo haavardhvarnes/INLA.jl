@@ -140,6 +140,12 @@ function convert_fixture(doc)
     if haskey(doc, "A_field")
         out["A_field"] = triplet_to_sparse(doc["A_field"])
     end
+    if haskey(doc, "B_tau")
+        out["B_tau"] = _rows_to_matrix(doc["B_tau"])
+    end
+    if haskey(doc, "B_kappa")
+        out["B_kappa"] = _rows_to_matrix(doc["B_kappa"])
+    end
     if haskey(doc, "fmesher_version")
         out["fmesher_version"] = String(doc["fmesher_version"])
     end
@@ -152,17 +158,22 @@ end
 
 Deserialise a list of equal-length numeric vectors (as emitted by
 `boundary_to_list` and `mesh_to_list` in `_helpers.R`) into a dense
-matrix whose rows are the vectors.
+matrix whose rows are the vectors. Robust to jsonlite's `auto_unbox`
+collapsing length-1 vector rows to scalars: a scalar element is treated
+as a length-1 row.
 """
+_row_as_vector(row::Real) = Float64[row]
+_row_as_vector(row) = Float64.(collect(row))
+
 function _rows_to_matrix(rows)
     n = length(rows)
     n == 0 && return Matrix{Float64}(undef, 0, 0)
-    first_row = Float64.(collect(rows[1]))
+    first_row = _row_as_vector(rows[1])
     d = length(first_row)
     M = Matrix{Float64}(undef, n, d)
     M[1, :] = first_row
     for i in 2:n
-        M[i, :] = Float64.(collect(rows[i]))
+        M[i, :] = _row_as_vector(rows[i])
     end
     return M
 end

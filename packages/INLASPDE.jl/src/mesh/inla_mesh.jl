@@ -41,7 +41,8 @@ num_vertices(mesh::INLAMesh) = size(mesh.points, 1)
 num_triangles(mesh::INLAMesh) = size(mesh.triangles, 1)
 
 """
-    inla_mesh_2d([loc]; boundary, max_edge, offset, cutoff, min_angle) -> INLAMesh
+    inla_mesh_2d([loc]; boundary, max_edge, offset, cutoff, min_angle,
+                 subdivide_boundary) -> INLAMesh
 
 Julia-native analogue of R-INLA's `inla.mesh.2d`: builds a constrained
 Delaunay triangulation refined to satisfy a maximum edge length and a
@@ -55,11 +56,19 @@ minimum triangle angle.
 - `boundary::AbstractMatrix{<:Real}` — `k × 2` CCW polygon defining the
   mesh domain (no repeating closing vertex). If omitted, the domain is
   derived from `loc`.
-- `max_edge::Real` — upper bound on triangle edge length. Implemented as
-  a triangle-area constraint `max_area = √3 / 4 · max_edge²`
-  (equilateral reference), which Ruppert refinement enforces strictly.
-- `offset::Real = 0` — extension buffer applied to the `loc` convex
-  hull when `boundary` is not given. Matches R-INLA's `offset`.
+- `max_edge::Real` or `NTuple{2, <:Real}` — upper bound on triangle
+  edge length. A scalar applies one bound globally; a tuple
+  `(inner, outer)` matches R-INLA's `max.edge=c(inner, outer)`: inner
+  triangles (centroid inside the inner hull) refine to `inner`,
+  triangles in the buffer band refine to `outer`. The tuple form
+  requires `loc` (and an `NTuple{2}` `offset`); use the scalar form
+  with explicit `boundary`. Bound is implemented as a triangle-area
+  constraint `max_area = √3 / 4 · max_edge²` (equilateral reference).
+- `offset::Real = 0` or `NTuple{2, <:Real}` — extension buffer(s)
+  applied to the `loc` convex hull when `boundary` is not given.
+  Scalar = single buffer (R-INLA's `offset` scalar). Tuple `(o₁, o₂)`
+  expands the hull by `o₁` to form the inner domain and by `o₁ + o₂`
+  to form the outer domain (R-INLA's `offset=c(o₁, o₂)`).
 - `cutoff::Real = 0` — minimum pairwise distance between interior
   points; closer points are collapsed (first-wins) before
   triangulation. Has no effect on boundary vertices.
@@ -67,6 +76,12 @@ minimum triangle angle.
   degrees. Must be below ≈33.8° for Ruppert's algorithm to terminate
   (Shewchuk 2002); values much below 20° give fewer refinement steps
   but coarser meshes near acute corners.
+- `subdivide_boundary::Bool = false` — when `true`, subdivide each
+  boundary segment so that no input edge exceeds the prevailing
+  `max_edge`. Strict per-edge enforcement on the boundary; the
+  Ruppert area bound continues to govern the interior. Without this,
+  long input edges of an explicit `boundary` survive at their input
+  length.
 
 # Returns
 
@@ -78,37 +93,105 @@ underlying `DelaunayTriangulation` object.
 ```julia
 loc = randn(50, 2)
 mesh = inla_mesh_2d(loc; max_edge = 0.3, offset = 0.5, min_angle = 25.0)
-fem  = FEMMatrices(mesh)
-spde = SPDE2(mesh)
+
+# Two-region: tight near data, coarser in the buffer band
+mesh2 = inla_mesh_2d(loc; max_edge = (0.2, 0.6), offset = (0.3, 1.0))
 ```
 """
 function inla_mesh_2d(
         loc=nothing;
         boundary=nothing,
-        max_edge::Real,
-        offset::Real=0.0,
+        max_edge::Union{Real, NTuple{2, <:Real}},
+        offset::Union{Real, NTuple{2, <:Real}}=0.0,
         cutoff::Real=0.0,
-        min_angle::Real=21.0
+        min_angle::Real=21.0,
+        subdivide_boundary::Bool=false
 )
-    max_edge > 0 ||
-        throw(ArgumentError("max_edge must be positive; got $max_edge"))
+    max_edge_t = _validate_max_edge(max_edge)
+    offset_t = _validate_offset(offset)
     min_angle > 0 ||
         throw(ArgumentError("min_angle must be positive; got $min_angle"))
     min_angle < 33.8 ||
         throw(ArgumentError("min_angle must be < 33.8° for Ruppert termination; got $min_angle"))
-    offset >= 0 ||
-        throw(ArgumentError("offset must be non-negative; got $offset"))
     cutoff >= 0 ||
         throw(ArgumentError("cutoff must be non-negative; got $cutoff"))
 
     loc === nothing && boundary === nothing &&
         throw(ArgumentError("inla_mesh_2d requires either `loc` or `boundary`"))
 
+    two_region = max_edge_t isa NTuple{2, Float64}
+    if two_region
+        loc === nothing &&
+            throw(ArgumentError("two-region max_edge requires `loc`; pass a scalar with explicit `boundary`"))
+        offset_t isa NTuple{2, Float64} ||
+            throw(ArgumentError("two-region max_edge requires NTuple offset (got scalar)"))
+        boundary === nothing ||
+            throw(ArgumentError("two-region max_edge cannot be combined with explicit `boundary`"))
+    end
+
     loc_m = _as_location_matrix(loc)
     bnd_m = _as_boundary_matrix(boundary)
 
-    bnd_poly, interior_pts = _mesh_domain(loc_m, bnd_m, offset, cutoff)
+    if two_region
+        @assert max_edge_t isa NTuple{2, Float64}
+        @assert offset_t isa NTuple{2, Float64}
+        return _build_two_region_mesh(loc_m, max_edge_t, offset_t, cutoff,
+            min_angle, subdivide_boundary)
+    else
+        @assert max_edge_t isa Float64
+        offset_scalar = offset_t isa NTuple{2, Float64} ? sum(offset_t) : offset_t
+        return _build_single_region_mesh(loc_m, bnd_m, max_edge_t, offset_scalar,
+            cutoff, min_angle, subdivide_boundary)
+    end
+end
 
+function _build_single_region_mesh(loc_m, bnd_m, max_edge::Float64, offset::Float64,
+        cutoff, min_angle, subdivide_boundary)
+    bnd_poly, interior_pts = _mesh_domain(loc_m, bnd_m, offset, cutoff)
+    if subdivide_boundary
+        bnd_poly = subdivide_polygon(bnd_poly, max_edge)
+    end
+
+    all_pts, boundary_nodes = _assemble_mesh_inputs(bnd_poly, interior_pts)
+
+    # Equilateral-triangle area as the Ruppert area bound for a target
+    # edge length.  Not tight for right triangles — they'd need
+    # `max_edge²/2` — but the refinement keeps a generous safety factor
+    # since edges in the output are typically below the bound.
+    max_area = sqrt(3.0) / 4.0 * max_edge^2
+    tri = DelaunayTriangulation.triangulate(all_pts; boundary_nodes=boundary_nodes)
+    DelaunayTriangulation.refine!(tri;
+        min_angle=Float64(min_angle), max_area=max_area)
+    return _build_inla_mesh(tri)
+end
+
+function _build_two_region_mesh(loc_m, max_edge_t::NTuple{2, Float64},
+        offset_t::NTuple{2, Float64}, cutoff, min_angle, subdivide_boundary)
+    inner_poly, bnd_poly, interior_pts = _two_region_domain(loc_m, offset_t, cutoff)
+    if subdivide_boundary
+        # Use the looser of the two `max_edge` values for the outer
+        # boundary subdivision; the inner refinement constraint still
+        # tightens triangles whose centroid sits inside the inner hull.
+        bnd_poly = subdivide_polygon(bnd_poly, max(max_edge_t...))
+    end
+
+    all_pts, boundary_nodes = _assemble_mesh_inputs(bnd_poly, interior_pts)
+
+    inner_edge, outer_edge = max_edge_t
+    inner_area = sqrt(3.0) / 4.0 * inner_edge^2
+    outer_area = sqrt(3.0) / 4.0 * outer_edge^2
+    global_area = max(inner_area, outer_area)
+    constraint = _two_region_constraint(inner_poly, inner_area, outer_area)
+
+    tri = DelaunayTriangulation.triangulate(all_pts; boundary_nodes=boundary_nodes)
+    DelaunayTriangulation.refine!(tri;
+        min_angle=Float64(min_angle),
+        max_area=global_area,
+        custom_constraint=constraint)
+    return _build_inla_mesh(tri)
+end
+
+function _assemble_mesh_inputs(bnd_poly, interior_pts)
     n_b = size(bnd_poly, 1)
     n_i = size(interior_pts, 1)
     all_pts = Vector{NTuple{2, Float64}}(undef, n_b + n_i)
@@ -118,19 +201,76 @@ function inla_mesh_2d(
     @inbounds for i in 1:n_i
         all_pts[n_b + i] = (interior_pts[i, 1], interior_pts[i, 2])
     end
-
     boundary_nodes = [[vcat(collect(1:n_b), 1)]]
+    return all_pts, boundary_nodes
+end
 
-    # Equilateral-triangle area as the Ruppert area bound for a target
-    # edge length.  Not tight for right triangles — they'd need
-    # `max_edge²/2` — but the refinement keeps a generous safety factor
-    # since edges in the output are typically below the bound.
-    max_area = sqrt(3.0) / 4.0 * max_edge^2
+# Validate `max_edge`: scalar > 0 → Float64; tuple of two positives → NTuple{2,Float64}.
+function _validate_max_edge(max_edge::Real)
+    max_edge > 0 ||
+        throw(ArgumentError("max_edge must be positive; got $max_edge"))
+    return Float64(max_edge)
+end
+function _validate_max_edge(max_edge::NTuple{2, <:Real})
+    inner, outer = max_edge
+    (inner > 0 && outer > 0) ||
+        throw(ArgumentError("max_edge tuple components must be positive; got $max_edge"))
+    return (Float64(inner), Float64(outer))
+end
 
-    tri = DelaunayTriangulation.triangulate(all_pts; boundary_nodes=boundary_nodes)
-    DelaunayTriangulation.refine!(tri; min_angle=Float64(min_angle), max_area=max_area)
+# Validate `offset`: scalar ≥ 0 → Float64; tuple of two non-negatives → NTuple{2,Float64}.
+function _validate_offset(offset::Real)
+    offset >= 0 ||
+        throw(ArgumentError("offset must be non-negative; got $offset"))
+    return Float64(offset)
+end
+function _validate_offset(offset::NTuple{2, <:Real})
+    o1, o2 = offset
+    (o1 >= 0 && o2 >= 0) ||
+        throw(ArgumentError("offset tuple components must be non-negative; got $offset"))
+    return (Float64(o1), Float64(o2))
+end
 
-    return _build_inla_mesh(tri)
+# Two-region domain: inner hull + outer hull = inner expanded by `outer_offset`.
+# All loc points fall inside the inner polygon (offset[1] > 0 ⇒ strict).
+function _two_region_domain(loc, offset_tuple::NTuple{2, Float64}, cutoff)
+    loc !== nothing ||
+        throw(ArgumentError("two-region max_edge requires loc"))
+    inner_offset, outer_offset = offset_tuple
+    inner_offset > 0 ||
+        throw(ArgumentError("two-region requires offset[1] > 0 (inner buffer)"))
+    outer_offset > 0 ||
+        throw(ArgumentError("two-region requires offset[2] > 0 (outer buffer)"))
+    loc_d = cutoff_dedup(loc, cutoff)
+    hull = convex_hull_polygon(loc_d)
+    inner_poly = expand_polygon(hull, inner_offset)
+    outer_poly = expand_polygon(inner_poly, outer_offset)
+    return inner_poly, outer_poly, loc_d
+end
+
+# Custom Ruppert constraint: inside `inner_poly` enforce `inner_area`,
+# outside enforce `outer_area`. Centroid-based region test.
+function _two_region_constraint(
+        inner_poly::AbstractMatrix{<:Real},
+        inner_area::Float64,
+        outer_area::Float64
+)
+    return (tri, T) -> begin
+        i, j, k = T
+        p1 = DelaunayTriangulation.get_point(tri, i)
+        p2 = DelaunayTriangulation.get_point(tri, j)
+        p3 = DelaunayTriangulation.get_point(tri, k)
+        cx = (p1[1] + p2[1] + p3[1]) / 3
+        cy = (p1[2] + p2[2] + p3[2]) / 3
+        area = 0.5 *
+               abs((p2[1] - p1[1]) * (p3[2] - p1[2]) -
+                   (p3[1] - p1[1]) * (p2[2] - p1[2]))
+        if _point_strictly_inside(cx, cy, inner_poly)
+            return area > inner_area
+        else
+            return area > outer_area
+        end
+    end
 end
 
 # ------------------------------------------------------------------

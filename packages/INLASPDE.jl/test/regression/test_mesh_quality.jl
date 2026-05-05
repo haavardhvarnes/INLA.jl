@@ -117,6 +117,17 @@ end
         max_edge=0.5, offset=-0.1)
     @test_throws ArgumentError inla_mesh_2d([0.0 0.0; 1.0 0.0; 0.0 1.0];
         max_edge=0.5, cutoff=-0.1)
+    # Two-region API requires loc + tuple offset, no explicit boundary.
+    sq = [0.0 0.0; 1.0 0.0; 1.0 1.0; 0.0 1.0]
+    @test_throws ArgumentError inla_mesh_2d(; boundary=sq, max_edge=(0.2, 0.5))
+    @test_throws ArgumentError inla_mesh_2d([0.0 0.0; 1.0 0.0; 0.0 1.0];
+        max_edge=(0.2, 0.5), offset=0.3)            # tuple max_edge needs tuple offset
+    @test_throws ArgumentError inla_mesh_2d([0.0 0.0; 1.0 0.0; 0.0 1.0];
+        max_edge=(-0.1, 0.5), offset=(0.3, 0.5))     # negative inner edge
+    @test_throws ArgumentError inla_mesh_2d([0.0 0.0; 1.0 0.0; 0.0 1.0];
+        max_edge=(0.2, 0.5), offset=(0.0, 0.5))      # zero inner offset
+    @test_throws ArgumentError inla_mesh_2d([0.0 0.0; 1.0 0.0; 0.0 1.0];
+        max_edge=(0.2, 0.5), offset=(0.3, 0.0))      # zero outer offset
 end
 
 @testset "inla_mesh_2d — FEM assembly and SPDE2 interop" begin
@@ -143,4 +154,108 @@ end
     Q = LatentGaussianModels.precision_matrix(spde, [0.0, 0.0])
     @test norm(Q - Q') <= 1.0e-10 * norm(Q)
     @test isposdef(Symmetric(Matrix(Q)))
+end
+
+# ---------------------------------------------------------------------
+# Phase M PR-6 — two-region max_edge and subdivide_boundary
+# ---------------------------------------------------------------------
+
+# Helper: classify each triangle as inside `inner_poly` (centroid test)
+# vs. outside, and return (inner_max_edge, outer_max_edge) actually
+# observed in the mesh. Used to verify two-region refinement separates
+# the bands.
+function _two_region_max_edges(mesh::INLAMesh, inner_poly)
+    inner_e = 0.0
+    outer_e = 0.0
+    for t in axes(mesh.triangles, 1)
+        i, j, k = mesh.triangles[t, :]
+        a = (mesh.points[i, 1], mesh.points[i, 2])
+        b = (mesh.points[j, 1], mesh.points[j, 2])
+        c = (mesh.points[k, 1], mesh.points[k, 2])
+        cx = (a[1] + b[1] + c[1]) / 3
+        cy = (a[2] + b[2] + c[2]) / 3
+        e = max(hypot(b[1] - a[1], b[2] - a[2]),
+            hypot(c[1] - b[1], c[2] - b[2]),
+            hypot(a[1] - c[1], a[2] - c[2]))
+        # Re-implement the polygon containment test inline (mirrors
+        # `_point_strictly_inside` in the package; CCW polygon assumed).
+        n = size(inner_poly, 1)
+        inside = true
+        for ii in 1:n
+            jj = ii == n ? 1 : ii + 1
+            ax = inner_poly[ii, 1]; ay = inner_poly[ii, 2]
+            bx = inner_poly[jj, 1]; by = inner_poly[jj, 2]
+            cross = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+            if cross <= 0
+                inside = false
+                break
+            end
+        end
+        if inside
+            inner_e = max(inner_e, e)
+        else
+            outer_e = max(outer_e, e)
+        end
+    end
+    return inner_e, outer_e
+end
+
+@testset "inla_mesh_2d — two-region max_edge separates inner/outer bands" begin
+    rng = MersenneTwister(0xCAFE)
+    loc = 0.2 .+ 0.6 .* rand(rng, 30, 2)   # interior of unit square
+    mesh = inla_mesh_2d(loc;
+        max_edge=(0.15, 0.6),
+        offset=(0.3, 0.6),
+        min_angle=25.0)
+
+    @test mesh isa INLAMesh
+    @test num_triangles(mesh) > 0
+
+    # Reconstruct the inner polygon to classify triangles.
+    hull = convex_hull_polygon(loc)
+    inner_poly = expand_polygon(hull, 0.3)
+
+    inner_e, outer_e = _two_region_max_edges(mesh, inner_poly)
+    # The Ruppert area bound is soft on edges (an isoceles-right
+    # triangle with area = √3/4·max_edge² has hypotenuse ≈ 1.32·max_edge);
+    # triangles straddling the inner-polygon boundary widen the spread.
+    # A 1.7× slack reflects observed worst case for inner triangles.
+    @test inner_e <= 1.7 * 0.15
+    # Outer triangles can be coarser than the inner bound — that's the
+    # whole point of two-region refinement.
+    @test outer_e > 0.15
+end
+
+@testset "inla_mesh_2d — two-region uses fewer vertices than uniform inner" begin
+    rng = MersenneTwister(0xCAFE)
+    loc = 0.2 .+ 0.6 .* rand(rng, 30, 2)
+    mesh_two = inla_mesh_2d(loc;
+        max_edge=(0.15, 0.6), offset=(0.3, 0.6), min_angle=25.0)
+    # Equivalent uniform refinement at the inner edge length over the
+    # combined inner+outer hull is strictly larger.
+    mesh_uniform = inla_mesh_2d(loc;
+        max_edge=0.15, offset=0.9, min_angle=25.0)
+    @test num_vertices(mesh_two) < num_vertices(mesh_uniform)
+end
+
+@testset "inla_mesh_2d — subdivide_boundary enforces strict edge bound" begin
+    # Long boundary edge: a wide rectangle. Without subdivision, the
+    # 4-unit bottom edge survives Ruppert (which only enforces area).
+    box = [0.0 0.0; 4.0 0.0; 4.0 1.0; 0.0 1.0]
+
+    # Without subdivision, the longest edge in the mesh can exceed
+    # max_edge along the input boundary.
+    mesh_off = inla_mesh_2d(; boundary=box, max_edge=0.5, min_angle=25.0)
+    e_off = max_triangle_edge(mesh_off.points, mesh_off.triangles)
+
+    mesh_on = inla_mesh_2d(; boundary=box, max_edge=0.5, min_angle=25.0,
+        subdivide_boundary=true)
+    e_on = max_triangle_edge(mesh_on.points, mesh_on.triangles)
+
+    # The subdivided mesh has at most the same Ruppert slack. The
+    # un-subdivided case has at least one boundary edge strictly above
+    # max_edge (the input boundary edges survive the area-only bound).
+    @test e_on <= 1.5 * 0.5
+    @test e_on <= e_off
+    @test num_vertices(mesh_on) >= num_vertices(mesh_off)
 end

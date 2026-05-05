@@ -52,6 +52,7 @@ using INLASPDE
     @testset "M3/M5 — R-INLA oracle" begin
         include("oracle/test_fmesher_parity.jl")
         include("oracle/test_meuse_spde.jl")
+        include("oracle/test_synthetic_spde_1d.jl")
     end
 
     @testset "Quality" begin

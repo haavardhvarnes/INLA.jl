@@ -75,6 +75,65 @@ end
     end
 end
 
+@testset "PCMatern{1} — rate derivation and tail probabilities" begin
+    # 1D PC-Matern: λ_ρ uses range_U^(1/2); range density is
+    # π_ρ(ρ) = (1/2) λ_ρ ρ^(-3/2) exp(-λ_ρ ρ^(-1/2)).
+    ru, rα = 1.5, 0.05
+    su, sα = 0.8, 0.01
+    pc = PCMatern{1}(range_U=ru, range_α=rα, sigma_U=su, sigma_α=sα)
+
+    @test pc isa PCMatern{1}
+    @test pc.λ_ρ≈-log(rα) * sqrt(ru) rtol=1.0e-12
+    @test pc.λ_σ≈-log(sα) / su rtol=1.0e-12
+
+    π_ρ(ρ) = 0.5 * pc.λ_ρ * ρ^(-1.5) * exp(-pc.λ_ρ * ρ^(-0.5))
+    π_σ(σ) = pc.λ_σ * exp(-pc.λ_σ * σ)
+
+    # Total mass = 1 on each marginal.
+    tot_ρ, _ = quadgk(π_ρ, 1.0e-8, Inf; rtol=1.0e-10)
+    tot_σ, _ = quadgk(π_σ, 0.0, Inf; rtol=1.0e-10)
+    @test tot_ρ≈1 rtol=1.0e-6
+    @test tot_σ≈1 rtol=1.0e-6
+
+    # User-specified tail probabilities recovered.
+    left_tail_ρ, _ = quadgk(π_ρ, 1.0e-10, ru; rtol=1.0e-10)
+    right_tail_σ, _ = quadgk(π_σ, su, Inf; rtol=1.0e-10)
+    @test left_tail_ρ≈rα rtol=1.0e-6
+    @test right_tail_σ≈sα rtol=1.0e-6
+end
+
+@testset "pc_matern_log_density — matches closed-form for d = 1" begin
+    pc = PCMatern{1}(range_U=1.0, range_α=0.05,
+        sigma_U=1.0, sigma_α=0.01)
+
+    for log_ρ in (-1.0, 0.0, 0.7), log_σ in (-2.0, 0.0, 0.3)
+        ρ = exp(log_ρ)
+        σ = exp(log_σ)
+        # log π_ρ(ρ) on the log ρ scale (with Jacobian):
+        #   log(1/2) + log λ_ρ - (3/2) log ρ - λ_ρ · ρ^(-1/2)  +  log ρ
+        # = log(1/2) + log λ_ρ - (1/2) log ρ - λ_ρ · ρ^(-1/2)
+        log_π_ρ_logscale = log(0.5) + log(pc.λ_ρ) - 0.5 * log_ρ -
+            pc.λ_ρ * ρ^(-0.5)
+        log_π_σ_logscale = log(pc.λ_σ) - pc.λ_σ * σ + log_σ
+        expected = log_π_ρ_logscale + log_π_σ_logscale
+        @test pc_matern_log_density(pc, log_ρ, log_σ)≈expected rtol=1.0e-12
+    end
+end
+
+@testset "PCMatern — backward-compatible default is D=2" begin
+    pc = PCMatern()
+    @test pc isa PCMatern{2}
+    pc_scaled = PCMatern(range_U=2.5, range_α=0.1)
+    @test pc_scaled isa PCMatern{2}
+    @test pc_scaled.λ_ρ≈-log(0.1) * 2.5 rtol=1.0e-12
+end
+
+@testset "PCMatern — dimension parameter validation" begin
+    @test_throws ArgumentError PCMatern{0}()
+    @test_throws ArgumentError PCMatern{-1}()
+    @test_throws ArgumentError PCMatern{:foo}()
+end
+
 @testset "pc_matern_log_density — factorises, each marginal integrates to 1" begin
     # The density on (log ρ, log σ) factorises into independent range
     # and sigma pieces. Each one-dimensional marginal must integrate to

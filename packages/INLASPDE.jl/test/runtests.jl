@@ -16,20 +16,25 @@ using INLASPDE
         include("regression/test_precision_alpha1.jl")
         include("regression/test_precision_alpha2.jl")
         include("regression/test_matern_reproduction.jl")
+        include("regression/test_fem_1d.jl")
+        include("regression/test_matern_reproduction_1d.jl")
     end
 
     @testset "M2 — SPDE2 + PC-Matérn" begin
         include("regression/test_pc_matern_prior.jl")
         include("regression/test_spde2_component.jl")
+        include("regression/test_spde1d_component.jl")
     end
 
     @testset "M3 — Mesh generation" begin
         include("regression/test_mesh_boundary.jl")
         include("regression/test_mesh_quality.jl")
+        include("regression/test_inla_mesh_1d.jl")
     end
 
     @testset "M4 — Projector" begin
         include("regression/test_projector.jl")
+        include("regression/test_projector_1d.jl")
     end
 
     @testset "M6 — Extensions (GeoInterface)" begin

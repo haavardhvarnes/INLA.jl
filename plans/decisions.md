@@ -3142,6 +3142,128 @@ Three options were on the table:
 
 ---
 
+## ADR-031: Targeted exception classification in the Laplace bad-θ wrapper
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+The LGM Newton hot path wraps the inner Laplace step with a smooth
+quadratic-in-θ penalty so that LBFGS over the hyperparameters never
+sees a non-finite objective. Two wrapper sites exist:
+
+- `_neg_log_posterior_θ` (`inla.jl`) — closure called by Optimization.jl
+  during the θ-mode search.
+- `_inla_integrate` (`inla.jl`) — per-design-point loop during
+  importance-sample integration.
+
+Both used `try { laplace_mode(...) } catch { return penalty }` with a
+**bare** catch. That mask is too wide: it hides genuine bugs in user
+likelihood code (a `MethodError` from a typo in `∇_η_log_density`, an
+`ArgumentError` from a misshapen `A` matrix) by silently routing them
+into the penalty region. Users debugging "why does INLA think this θ
+is infeasible?" then have to single-step the inner Newton to discover
+the error.
+
+The predecessor `IntegratedNestedLaplace.jl` (`src/INLA.jl:387-415`)
+caught only `LinearAlgebra.PosDefException` because that was the
+single failure mode it had observed; this PR (M-PR-4) is the moment
+to lift that targeting into the new code, and to add the two adjacent
+numerical-failure types we expect: `SingularException` (LAPACK side of
+the same Cholesky failure) and `DomainError` (out-of-domain log
+likelihood — e.g. negative variance in a hand-coded Gaussian
+log-density at a pathological θ).
+
+### Decision
+
+Introduce a single classifier `_is_bad_theta_failure(err) -> Bool`
+that returns `true` only for `LinearAlgebra.PosDefException`,
+`LinearAlgebra.SingularException`, and `DomainError`. Both wrapper
+sites become `try ... catch err; _is_bad_theta_failure(err) ||
+rethrow(err); ... end` — bad-θ failures land in the penalty region;
+everything else propagates.
+
+Component constructors with **parametric** domain checks (e.g.
+`AR1GMRF`'s `ρ ∈ (-1, 1)` and `τ > 0`) throw `DomainError` rather
+than `ArgumentError`, so the classifier catches them. Static
+shape/structure checks (e.g. `n ≥ 2`) keep `ArgumentError` because
+they cannot be triggered by any θ-step — failure is a programming
+bug, not a domain violation. `ArgumentError` is therefore the
+"programming-bug" tier and `DomainError` the "θ-domain" tier. New
+components should follow the same split.
+
+Three secondary defenses ride along in the same PR (no separate ADR
+because they are mechanical):
+
+- **NaN warm-start reset.** `laplace_mode` resets `x₀` to zeros if any
+  entry is non-finite. CCD's per-point loop forwards the previous
+  point's `x̂`; if that point was discarded as bad-θ its `x̂` may
+  contain NaN.
+- **FD-Hessian non-finite guard.** `_safe_inverse_hessian` falls back
+  to identity covariance with a warning when the FD Hessian at θ̂ has
+  NaN/Inf entries (probes that straddle the penalty cliff).
+- **Per-point keep-mask** (already in `_inla_integrate` pre-PR;
+  retained, now triggered by the targeted classifier).
+
+The penalty form `1.0e10 + 1.0e3 · ‖θ‖²` is unchanged.
+
+### Consequences
+
+#### Positive
+
+- Genuine bugs (typos in user likelihoods, broken model construction)
+  surface as the actual exception with the actual stacktrace, not as
+  a silent "this θ is infeasible" misdirection.
+- The classifier is a single point of truth — adding a new failure
+  mode is a one-line edit, and the test suite (predicate +
+  end-to-end on Gaussian/SPDE2 fixtures) covers both sides.
+- The predecessor's pattern is preserved as the v0.2 baseline; future
+  numerical-failure modes can be folded in without re-architecting
+  the wrappers.
+
+#### Negative
+
+- Slightly larger surface: future contributors must add to the
+  classifier when introducing a new numerical-failure mode in a
+  user-defined component. The docstring on `_is_bad_theta_failure`
+  flags this.
+- The classifier list is not exhaustive — if a new failure mode lands
+  with a different exception type before the docstring is read, the
+  user sees a hard crash rather than the smooth penalty. Treated as
+  acceptable: a hard crash with a clear stacktrace is strictly more
+  useful than a silent penalty.
+
+#### Out of scope (deferred)
+
+- A full survey of every numerical exception thrown by every
+  Optimization / LinearSolve / SuiteSparse path. The classifier is
+  expanded as new failures are observed in oracle / triangulation
+  tests, not pre-emptively.
+
+### References
+
+- [`packages/LatentGaussianModels.jl/src/inference/inla.jl`](packages/LatentGaussianModels.jl/src/inference/inla.jl)
+  — `_is_bad_theta_failure`, the two wrapper sites,
+  `_safe_inverse_hessian` finite guard.
+- [`packages/LatentGaussianModels.jl/src/inference/laplace.jl`](packages/LatentGaussianModels.jl/src/inference/laplace.jl)
+  — NaN warm-start reset.
+- [`packages/LatentGaussianModels.jl/test/regression/test_safety_net.jl`](packages/LatentGaussianModels.jl/test/regression/test_safety_net.jl)
+  — closed-form regression suite for all four behaviours.
+- [`packages/INLASPDE.jl/test/regression/test_safety_net_spde.jl`](packages/INLASPDE.jl/test/regression/test_safety_net_spde.jl)
+  — SPDE2 triangulation against the LGM safety net.
+- [`packages/GMRFs.jl/src/gmrf.jl`](packages/GMRFs.jl/src/gmrf.jl) —
+  `AR1GMRF` parametric domain checks raised as `DomainError`.
+- [`packages/INLASPDE.jl/src/assembly/precision.jl`](packages/INLASPDE.jl/src/assembly/precision.jl)
+  — `spde_precision` / `spde_precision_nonstationary` parametric
+  `(τ, κ)` checks raised as `DomainError`; structural `α ∈ {1, 2}`
+  and length-mismatch checks stay `ArgumentError`.
+- [`src/IntegratedNestedLaplace.jl:387-415`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl/blob/master/src/IntegratedNestedLaplace.jl#L387-L415)
+  — predecessor pattern (single `PosDefException` catch).
+- ADR-022 — IIDND saturation precedent for the smooth-penalty design.
+
+---
+
 ## ADR template for future entries
 
 ```

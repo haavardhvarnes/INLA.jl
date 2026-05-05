@@ -113,6 +113,11 @@ function laplace_mode(m::LatentGaussianModel, y, θ::AbstractVector{<:Real};
     end
 
     x = x0 === nothing ? zeros(Float64, m.n_x) : Vector{Float64}(x0)
+    # Reset a non-finite warm-start. Callers may forward `x̂` from a
+    # neighbouring `θ` evaluation that landed in the bad-θ region and
+    # produced NaN/Inf coordinates; restarting from zero is safer than
+    # propagating the contamination into the Newton step.
+    any(!isfinite, x) && fill!(x, 0.0)
 
     # Build initial posterior precision and factor cache on Q_reg.
     # `J` is the effective Jacobian `dη/dx` (= `A` for non-Copy models;

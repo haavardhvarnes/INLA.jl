@@ -134,6 +134,36 @@ end
 # ---------------------------------------------------------------------
 
 """
+    _is_bad_theta_failure(err) -> Bool
+
+Classify an exception thrown from inside `laplace_mode` as a "bad-θ"
+failure (numerical pathology that should activate the smooth penalty)
+versus a genuine bug (which must propagate). Treating only specific
+numerical exceptions as bad-θ keeps real bugs unmasked: a typo in a
+user-defined likelihood that throws `MethodError` should surface, not
+silently land in the penalty region.
+
+Currently `PosDefException`, `SingularException`, and `DomainError` are
+recognised — these cover Cholesky failure on a near-singular `H`,
+LAPACK-side singular factorisations, and out-of-domain log-densities
+or component domain violations (e.g. `AR1GMRF` rejecting `ρ = 1.0`
+when LBFGS overshoots `atanh(ρ)`). Add new types here when a new
+numerical-failure mode is identified; do not widen to a bare
+`Exception` catch.
+
+By convention, `ArgumentError` is reserved for static
+shape/programming bugs (`n ≥ 2`, mismatched matrix dimensions) and
+is NOT in the bad-θ class — those should never be reachable from a
+θ-step and indicate a real bug. Component constructors should raise
+`DomainError` for parametric domain violations.
+"""
+function _is_bad_theta_failure(err)
+    return err isa LinearAlgebra.PosDefException ||
+           err isa LinearAlgebra.SingularException ||
+           err isa DomainError
+end
+
+"""
     _neg_log_posterior_θ(m, y, strategy) -> function
 
 Return a closure `(θ, _p) -> -log π(θ | y)` evaluated by Laplace. The
@@ -150,6 +180,10 @@ step lands in an infeasible region — see ADR-022 / IIDND_Sep{2} where
 larger than any feasible `-log π(θ | y)` we have ever observed (≲ 1e6
 on Phase F–I oracles), so the optimum is unaffected, and the smooth
 quadratic in θ gives a usable FD gradient pointing back to the origin.
+
+Only exceptions classified as "bad-θ" by [`_is_bad_theta_failure`](@ref)
+trigger the penalty; everything else is rethrown so genuine bugs in
+the model definition surface unmasked.
 """
 function _neg_log_posterior_θ(m::LatentGaussianModel, y, laplace::Laplace)
     @inline _penalty(θ) = 1.0e10 + 1.0e3 * sum(abs2, θ)
@@ -157,7 +191,8 @@ function _neg_log_posterior_θ(m::LatentGaussianModel, y, laplace::Laplace)
         local res
         try
             res = laplace_mode(m, y, θ; strategy=laplace)
-        catch
+        catch err
+            _is_bad_theta_failure(err) || rethrow(err)
             return _penalty(θ)
         end
         !isfinite(res.log_marginal) && return _penalty(θ)
@@ -266,7 +301,8 @@ function _inla_integrate(m::LatentGaussianModel, y,
         local res
         try
             res = laplace_mode(m, y, θ_k; strategy=laplace)
-        catch
+        catch err
+            _is_bad_theta_failure(err) || rethrow(err)
             keep_mask[k] = false
             continue
         end
@@ -449,6 +485,19 @@ end
 
 function _safe_inverse_hessian(H::AbstractMatrix)
     Hs = Symmetric(Matrix(H))
+    # The finite-difference Hessian can return NaN/Inf entries if the
+    # FD probes around `θ̂` straddle the smooth penalty cliff in
+    # `_neg_log_posterior_θ` (the closure is finite but its derivative
+    # changes by 1e10 across the boundary). Falling back to a wide
+    # identity covariance keeps the integration design well-defined; the
+    # IS reweight in `_inla_integrate` then absorbs the proposal
+    # mismatch rather than crashing the eigen / mvnormal log-density
+    # path downstream.
+    if any(!isfinite, Hs)
+        @warn "INLA: finite-difference Hessian at θ̂ contains non-finite " *
+              "entries; falling back to identity covariance"
+        return Matrix{Float64}(I, size(Hs, 1), size(Hs, 1))
+    end
     # Always project to positive eigenvalues. A finite-difference Hessian
     # at a flat ridge can have small negative eigenvalues from rounding;
     # we bound the resulting variance to keep the integration grid from

@@ -15,8 +15,9 @@ inheriting `inla.stack`'s ergonomic baggage.
 - [`StackedMapping`](@ref)     — block-row stack of per-likelihood
   mappings. Lands fully in Phase G PR2 (multi-likelihood); the struct
   ships now so the type hierarchy is complete.
-- [`KroneckerMapping`](@ref)   — separable `A_space ⊗ A_time`. Stub
-  for Phase M; struct ships now, `apply!` errors until Phase M lands.
+- [`KroneckerMapping`](@ref)   — separable `A_space ⊗ A_time`.
+  Forward/adjoint multiplies via `vec(A_time · X · A_space')`; the
+  dense Kronecker product is never materialized.
 
 # Required interface
 
@@ -279,9 +280,19 @@ as_matrix(m::StackedMapping) = vcat(map(as_matrix, m.blocks)...)
 """
     KroneckerMapping(A_space, A_time)
 
-Separable space-time projector `A = A_space ⊗ A_time`. The struct
-exists so the type hierarchy is closed; `apply!` / `apply_adjoint!`
-implementations land in Phase M (non-stationary SPDE expansion).
+Separable space-time projector `A = A_space ⊗ A_time`. Forward and
+adjoint multiplies use the matrix identity
+`(A_space ⊗ A_time) vec(X) = vec(A_time · X · A_space')` so the dense
+Kronecker product is never materialized — critical when both factors
+are large (e.g. SPDE mesh × time series).
+
+# Storage layout
+
+Treat `x` and `η` as column-major flattenings:
+
+- `reshape(x, ncols(A_time), ncols(A_space))` — column index ranges
+  over space, row index over time.
+- `reshape(η, nrows(A_time), nrows(A_space))` — same convention.
 """
 struct KroneckerMapping{S <: AbstractObservationMapping,
     T <: AbstractObservationMapping} <: AbstractObservationMapping
@@ -292,14 +303,52 @@ end
 nrows(m::KroneckerMapping) = nrows(m.A_space) * nrows(m.A_time)
 ncols(m::KroneckerMapping) = ncols(m.A_space) * ncols(m.A_time)
 
-function apply!(::AbstractVector, ::KroneckerMapping, ::AbstractVector)
-    error("KroneckerMapping.apply! is a Phase M task (replan-2026-04-28.md " *
-          "Phase M — SPDE expansion); the struct ships in Phase G for " *
-          "type-hierarchy completeness only.")
+function apply!(η::AbstractVector, m::KroneckerMapping, x::AbstractVector)
+    length(x) == ncols(m) ||
+        throw(DimensionMismatch("x has length $(length(x)); KroneckerMapping expects $(ncols(m))"))
+    length(η) == nrows(m) ||
+        throw(DimensionMismatch("η has length $(length(η)); KroneckerMapping expects $(nrows(m))"))
+
+    nC_s, nR_s = ncols(m.A_space), nrows(m.A_space)
+    nC_t, nR_t = ncols(m.A_time),  nrows(m.A_time)
+
+    X = reshape(x, nC_t, nC_s)
+    Y = reshape(η, nR_t, nR_s)
+    Z = similar(η, nR_t, nC_s)
+
+    for j in 1:nC_s
+        @views apply!(Z[:, j], m.A_time, X[:, j])
+    end
+
+    for i in 1:nR_t
+        @views apply!(Y[i, :], m.A_space, Z[i, :])
+    end
+
+    return η
 end
 
-function apply_adjoint!(::AbstractVector, ::KroneckerMapping, ::AbstractVector)
-    error("KroneckerMapping.apply_adjoint! is a Phase M task; see apply! for context.")
+function apply_adjoint!(g::AbstractVector, m::KroneckerMapping, r::AbstractVector)
+    length(r) == nrows(m) ||
+        throw(DimensionMismatch("r has length $(length(r)); KroneckerMapping expects $(nrows(m))"))
+    length(g) == ncols(m) ||
+        throw(DimensionMismatch("g has length $(length(g)); KroneckerMapping expects $(ncols(m))"))
+
+    nC_s, nR_s = ncols(m.A_space), nrows(m.A_space)
+    nC_t, nR_t = ncols(m.A_time),  nrows(m.A_time)
+
+    R = reshape(r, nR_t, nR_s)
+    G = reshape(g, nC_t, nC_s)
+    W = similar(g, nC_t, nR_s)
+
+    for j in 1:nR_s
+        @views apply_adjoint!(W[:, j], m.A_time, R[:, j])
+    end
+
+    for i in 1:nC_t
+        @views apply_adjoint!(G[i, :], m.A_space, W[i, :])
+    end
+
+    return g
 end
 
 as_matrix(m::KroneckerMapping) = kron(as_matrix(m.A_space), as_matrix(m.A_time))

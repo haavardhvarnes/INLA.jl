@@ -60,6 +60,7 @@ using INLASPDE
         include("oracle/test_meuse_spde.jl")
         include("oracle/test_synthetic_spde_1d.jl")
         include("oracle/test_lindgren_rue_lindstrom_3_2.jl")
+        include("oracle/test_cameletti_pm10.jl")
     end
 
     @testset "Quality" begin

@@ -70,10 +70,14 @@ Fractional α is deferred to v0.3 (Bolin–Kirchner 2020 rational
 approximation).
 """
 function spde_precision(fem::FEMMatrices, α::Integer, τ::Real, κ::Real)
+    # Parametric (τ, κ) checks raise DomainError so the LGM safety net
+    # in `_neg_log_posterior_θ` can recover when LBFGS overshoots into
+    # `exp(very_negative_log_κ) → 0.0`. The structural `α ∈ {1, 2}` check
+    # stays as ArgumentError because no θ-step can produce it (ADR-031).
     τ > 0 ||
-        throw(ArgumentError("τ must be positive; got τ=$τ"))
+        throw(DomainError(τ, "τ must be positive; got τ=$τ"))
     κ > 0 ||
-        throw(ArgumentError("κ must be positive; got κ=$κ"))
+        throw(DomainError(κ, "κ must be positive; got κ=$κ"))
     if α == 1
         return τ^2 * (κ^2 * fem.C + fem.G1)
     elseif α == 2
@@ -113,11 +117,11 @@ function spde_precision_nonstationary(
         "spde_precision_nonstationary: length(κ_v) ($(length(κ_v))) " *
         "must equal n_vertices ($n)"
     ))
-    all(>(0), τ_v) || throw(ArgumentError(
-        "spde_precision_nonstationary: all τ_v must be positive"
+    all(>(0), τ_v) || throw(DomainError(
+        τ_v, "spde_precision_nonstationary: all τ_v must be positive"
     ))
-    all(>(0), κ_v) || throw(ArgumentError(
-        "spde_precision_nonstationary: all κ_v must be positive"
+    all(>(0), κ_v) || throw(DomainError(
+        κ_v, "spde_precision_nonstationary: all κ_v must be positive"
     ))
     α == 2 || throw(ArgumentError(
         "spde_precision_nonstationary: only α = 2 is supported in v0.2; " *
@@ -149,7 +153,8 @@ function spde_precision(
 )
     if α == 1
         τ > 0 && κ > 0 ||
-            throw(ArgumentError("τ and κ must be positive; got τ=$τ, κ=$κ"))
+            throw(DomainError((τ, κ),
+                "τ and κ must be positive; got τ=$τ, κ=$κ"))
         return τ^2 * (κ^2 * C + G1)
     end
     Cl = C_lumped === nothing ? lumped_mass(C) : C_lumped

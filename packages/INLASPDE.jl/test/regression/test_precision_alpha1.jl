@@ -38,8 +38,12 @@ end
 
 @testset "spde_precision(α=1) — argument validation" begin
     fem = FEMMatrices(POINTS_SQ, TRIS_SQ)
-    @test_throws ArgumentError spde_precision(fem, 1, -1.0, 1.0)
-    @test_throws ArgumentError spde_precision(fem, 1, 1.0, -0.1)
+    # Parametric (τ, κ) checks raise DomainError so the LGM safety net
+    # catches them when LBFGS overshoots; the structural α-validity
+    # check stays as ArgumentError because no θ-step can change α
+    # (ADR-031).
+    @test_throws DomainError spde_precision(fem, 1, -1.0, 1.0)
+    @test_throws DomainError spde_precision(fem, 1, 1.0, -0.1)
     @test_throws ArgumentError spde_precision(fem, 0, 1.0, 1.0)
     @test_throws ArgumentError spde_precision(fem, 3, 1.0, 1.0)
 end

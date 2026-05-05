@@ -164,10 +164,14 @@ end
 
 @testset "SPDE2NonStationary — spde_precision_nonstationary input validation" begin
     fem = INLASPDE.FEMMatrices(POINTS_SQ, TRIS_SQ)
+    # Length mismatches and the structural α-validity check stay as
+    # ArgumentError (programming-bug tier); parametric per-vertex (τ_v,
+    # κ_v) positivity checks raise DomainError so the LGM safety net
+    # catches them under LBFGS overshoot (ADR-031).
     @test_throws ArgumentError spde_precision_nonstationary(fem, 2, ones(3), ones(4))
     @test_throws ArgumentError spde_precision_nonstationary(fem, 2, ones(4), ones(3))
-    @test_throws ArgumentError spde_precision_nonstationary(fem, 2, fill(-1.0, 4), ones(4))
-    @test_throws ArgumentError spde_precision_nonstationary(fem, 2, ones(4), fill(0.0, 4))
+    @test_throws DomainError spde_precision_nonstationary(fem, 2, fill(-1.0, 4), ones(4))
+    @test_throws DomainError spde_precision_nonstationary(fem, 2, ones(4), fill(0.0, 4))
     @test_throws ArgumentError spde_precision_nonstationary(fem, 1, ones(4), ones(4))
 end
 

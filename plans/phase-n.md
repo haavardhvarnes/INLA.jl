@@ -89,29 +89,59 @@ forward, this PR catches it.
 Half a day of work; ~150 LOC of test scaffolding. Lands as the
 quality gate before PR-3 enlarges the parser.
 
-### PR-3 — Multi-`f` terms + automatic `StackedMapping` synthesis
+### PR-3 — Multi-`f` roundtrip coverage
 
-`@lgm y ~ 1 + f(region, BYM2(W)) + f(time, AR1())` lowers to:
+**Scope correction (recorded 2026-05-05).** This PR's original scope
+above envisaged a per-component `StackedMapping` synthesis with
+`Component => Mapping` pairs. That pseudocode does not fit LGM core's
+actual `StackedMapping` API: `StackedMapping(blocks, rows)` is a
+**row-partition** structure for multi-likelihood (`inla.stack`-style
+disjoint observation slices sharing a column-stacked latent), not a
+per-component column-partition. There is no LGM core mapping type that
+keys per-component mappings — and per
+[`LatentGaussianModels.jl/CLAUDE.md`](../packages/LatentGaussianModels.jl/CLAUDE.md)
+LGMFormula must consume the existing API, not extend it.
+
+**General guidance** (applies to all Phase N PRs): LGM core changes
+are last-resort. If a Phase N PR's plan seems to need an LGM core API
+addition, that's a replan signal — re-scope the PR around what
+LGMFormula can deliver alone, or escalate as a separate Tier-1
+follow-up.
+
+PR-1's `_build_design_matrix` already handles multi-`f` correctly: it
+loops over every `f(...)` term, pushes a per-term `sparse(1:n_obs,
+idx, 1.0, n_obs, length(comp))` block, and returns
+`reduce(hcat, blocks)`. The LGM constructor wraps that single
+`SparseMatrixCSC` as `LinearProjector(A)` — the v0.2 default per
+ADR-017. A multi-`f` formula like `y ~ 1 + f(region, BYM2(W)) +
+f(time, AR1(T))` therefore lowers to:
 
 ```julia
 LatentGaussianModel(
-    Poisson(),
-    (Intercept(), BYM2(W), AR1()),
-    StackedMapping((
-        Intercept() => IdentityMapping(n),
-        BYM2(W)    => LinearProjector(A_region),
-        AR1()      => LinearProjector(A_time),
-    )),
+    family,
+    (Intercept(), BYM2(W), AR1(T)),
+    A,        # = hcat(intercept_block, A_region, A_time) :: SparseMatrixCSC
 )
 ```
 
-Where `A_region`, `A_time` are the 0/1 design matrices built from the
-column groupings (R-INLA's `inla.stack`-equivalent). This is the
-biggest expansion-machinery PR.
+**Revised PR-3 scope: test-only coverage.** No source change. New
+file `test/regression/test_multi_f.jl` adds:
+- Synthetic two-effect roundtrips (BYM2 + AR1, Besag + IID, IID +
+  RW1).
+- Synthetic three-effect roundtrip (IID + RW1 + Seasonal).
+- Mixed covariate + multi-`f` (Gaussian, several covariates plus two
+  random effects).
+- No-intercept multi-`f` (`0 + f(...) + f(...)`).
+- Scotland BYM2 *shape* roundtrip (Poisson + intercept +
+  `f(area, BYM2(W))` on a small synthetic adjacency).
+- Tokyo RW2 *shape* roundtrip (Binomial + `f(day, RW2(...; cyclic=true))`
+  on a tiny synthetic dataset).
 
-**Tests**: roundtrip on Scotland BYM2 (the canonical disease-mapping
-fit), Tokyo rainfall (RW2 + Bernoulli), and a synthetic
-`f(region, BYM2) + f(time, AR1)` two-effect fit.
+These are roundtrip equality tests against the hand-written Tier-1
+form — no full inference. Full disease-mapping oracle parity is
+already covered in `LatentGaussianModels.jl/test/oracle/`; PR-3's job
+is to prove the macro produces an `_struct_isequal` model for these
+canonical shapes.
 
 ### PR-4 — Multi-likelihood + `Copy`
 

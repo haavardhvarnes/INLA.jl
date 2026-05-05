@@ -2875,6 +2875,149 @@ there is no measurable performance gap with C, and an FFI layer would
 
 ---
 
+## ADR-027: IS-correction port from `IntegratedNestedLaplace.jl` — declined for v0.x; deferred to per-workflow strategy if a use case appears
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase L's tail carried a deferred stretch item, PR-7(b), to port an
+"importance-sampling correction" from
+`IntegratedNestedLaplace.jl` per
+[`plans/replan-2026-04-28.md`](replan-2026-04-28.md) lines 497-498,
+behind an `INLA(; importance_sample_correct=false)` flag. With Phase L
+shipped at v0.1.5 (2026-05-04), the natural moment to either close or
+adopt the item is now — before Phase M opens.
+
+Investigation surfaced three things:
+
+1. **The "standard" IS reweighting is already in the integration loop.**
+   [`packages/LatentGaussianModels.jl/src/inference/inla.jl:298-307`](../packages/LatentGaussianModels.jl/src/inference/inla.jl)
+   implements the textbook Laplace-Gaussian importance-sampling
+   estimator described in Rue, Martino, Chopin (2009) JRSSB §3.2 (eq.
+   11):
+
+   ```julia
+   log_unnorm   = log_base_weights .+ log_π .- log_q
+   log_norm     = _logsumexp(log_unnorm)
+   w            = exp.(log_unnorm .- log_norm)
+   log_marginal = log_norm        # the IS estimator for log Z_π
+   ```
+
+   The proposal `q ~ N(θ̂, Σ)` is the Gaussian-at-the-mode used by
+   `Grid` / `CCD`. The Phase K skewness-correction docstring at
+   [`integration.jl:65`](../packages/LatentGaussianModels.jl/src/inference/integration.jl)
+   explicitly notes "the IS reweight in step (3) absorbs the proposal
+   mismatch." So the replan's "port IS correction from
+   `IntegratedNestedLaplace.jl`" is *not* about adding a missing
+   reweight — the reweight is not missing.
+
+2. **`IntegratedNestedLaplace.jl` is the user's own predecessor
+   experiment**, not an upstream library. It implements the same
+   Laplace-Gaussian IS flow we already have; there is no extra IS path
+   to port.
+
+3. **The only literature implementation with a substantively-different
+   IS correction is Berild, Bolin, Lindgren, Rue (2022) "Importance
+   Sampling with the Integrated Nested Laplace Approximation"** (JCGS
+   31(4); arXiv 2103.02721; reference R code at
+   [`github.com/berild/inla-mc`](https://github.com/berild/inla-mc)).
+   This is **IS-INLA / AMIS-INLA**, an entirely different beast:
+
+   - **Use case**: conditional LGMs where `θ` has a non-standard
+     distribution that breaks the Gaussian-at-the-mode proposal —
+     Bayesian lasso (Laplace prior on `β`), quantile regression
+     (asymmetric-Laplace likelihood with the quantile parameter
+     outside the LGM hyperparameter set), missing-covariate
+     imputation.
+   - **Algorithm**: draw `N = 10³–10⁴` samples θ_i ∼ q_proposal, run a
+     *full INLA fit* at each, weight by
+     `π(θ_i)·π̂(y|θ_i)/q_proposal(θ_i)`. Adaptive variants (AMIS)
+     update `q_proposal` across iterations.
+   - **Cost**: `N × t_inla` — two to three orders of magnitude slower
+     than a single fit.
+   - **Diagnostic**: modified ESS (Owen 2013); not Pareto-k.
+   - **What it does NOT solve**: the heavy-tailed θ-posterior
+     pathology (covered by Phase K's skewness correction) and the
+     sharply non-Gaussian per-coordinate latent pathology (covered by
+     Phase L's `FullLaplace`). IS-INLA targets *θ*-uncertainty under
+     non-standard θ-priors specifically.
+
+The Phase K decision matrix already records that the fixed-`N=100`
+Monte-Carlo IS marginal-likelihood correction from
+`IntegratedNestedLaplace.jl` was evaluated and rejected because, at
+that scale, its Monte-Carlo error (~0.1 nat) is comparable to or
+larger than the corrections it claims to make and it ships no ESS
+diagnostic. Nothing about Phase L's close changes that arithmetic.
+
+### Decision
+
+1. **PR-7(b) is dropped from the Phase L tail and from the roadmap.**
+   No `importance_sample_correct` flag is added to `INLA()` and no
+   parallel IS code path is shipped.
+
+2. **The standard Laplace-Gaussian IS reweighting at
+   [`inla.jl:298-307`](../packages/LatentGaussianModels.jl/src/inference/inla.jl)
+   is the canonical "IS correction" in this project.** It is not
+   optional, not behind a flag, and not pluggable.
+
+3. **The failure modes the replan cited are addressed by
+   better-targeted, cheaper, deterministic methods**:
+   - Heavy-tailed θ-posteriors → Phase K skewness correction
+     (asymmetric `Grid` node placement) and `refine_hyperposterior`.
+   - Sharply non-Gaussian per-coordinate latents → Phase L's
+     `FullLaplace` marginal strategy.
+   - Per-observation IS reliability → PSIS-LOO weakdep extension
+     with Pareto-k diagnostic (Phase K).
+
+4. **If a user case for Bayesian lasso / quantile regression / missing
+   covariates appears later, IS-INLA is the right tool — but shipped
+   as a fresh `ISINLA <: AbstractInferenceStrategy` per ADR-010, not
+   as a flag on `INLA()`.** A new ADR is required at that time.
+
+### Consequences
+
+#### Positive
+
+- Closes a long-running roadmap loose end without committing to a
+  100×–10000× slowdown for workflows not on the v0.x roadmap.
+- Removes a confusing, never-implemented `importance_sample_correct`
+  kwarg from the prospective `INLA()` API.
+- Redirects future "IS-INLA" requests to a structurally-correct
+  `AbstractInferenceStrategy` extension (per ADR-010 — third-party
+  strategies are first-class) rather than letting them accumulate as
+  flags on the canonical entry point.
+
+#### Neutral
+
+- The replan's port pipeline (lines 476-504 of
+  [`plans/replan-2026-04-28.md`](replan-2026-04-28.md)) loses one
+  candidate. The remaining candidates (constraint-projected
+  simplified-Laplace mean correction, asymmetric skewness corrections,
+  Edgeworth correction, the BivariateIIDModel and NonStationarySPDE
+  numerical kernels) are unaffected.
+
+### References
+
+- Rue, Martino, Chopin 2009 JRSSB §3.2 (eq. 11) — standard IS
+  reweighting; the form already implemented at `inla.jl:298-307`.
+- Berild, Bolin, Lindgren, Rue 2022 JCGS 31(4); arXiv 2103.02721;
+  reference R code at `github.com/berild/inla-mc` — IS-INLA /
+  AMIS-INLA, the legitimate port target if/when a Bayesian-lasso /
+  quantile-regression / missing-covariate use case appears.
+- ADR-010 — third-party `AbstractInferenceStrategy` is first-class;
+  the route through which `ISINLA` would ship.
+- ADR-026 — `AbstractMarginalStrategy` precedent for adding a new
+  strategy without touching `INLA()`'s public surface.
+- [`packages/LatentGaussianModels.jl/src/inference/inla.jl:298-307`](../packages/LatentGaussianModels.jl/src/inference/inla.jl)
+  — current IS-reweight implementation.
+- [`packages/LatentGaussianModels.jl/src/inference/integration.jl:65`](../packages/LatentGaussianModels.jl/src/inference/integration.jl)
+  — Phase K skewness-correction docstring noting "the IS reweight in
+  step (3) absorbs the proposal mismatch."
+
+---
+
 ## ADR template for future entries
 
 ```

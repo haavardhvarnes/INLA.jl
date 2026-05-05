@@ -1,15 +1,17 @@
 name = "LGMFormula"
 uuid = "bd1353c5-d16b-48e9-b430-0ac24b813647"
-authors = ["TBD"]
-version = "0.1.0-DEV"
+authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
+version = "0.2.0"
 
 [deps]
 LatentGaussianModels = "50d8cc41-879e-4ac9-9bf2-e3c789b17716"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 
 [compat]
-LatentGaussianModels = "0.1"
+LatentGaussianModels = "0.2"
+SparseArrays = "1"
 StatsModels = "0.7"
 Tables = "1"
 julia = "1.12"
@@ -17,7 +19,8 @@ julia = "1.12"
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "JET", "Test"]
+test = ["Aqua", "JET", "Random", "Test"]

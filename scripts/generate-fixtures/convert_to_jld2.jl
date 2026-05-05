@@ -126,6 +126,9 @@ function convert_fixture(doc)
     if haskey(doc, "mesh")
         out["mesh"] = _convert_mesh(doc["mesh"])
     end
+    if haskey(doc, "mesh_1d")
+        out["mesh_1d"] = _convert_mesh_1d(doc["mesh_1d"])
+    end
     if haskey(doc, "boundary")
         out["boundary"] = _rows_to_matrix(doc["boundary"])
     end
@@ -185,6 +188,13 @@ function _convert_mesh(m)
         "n_triangles" => Int(m["n_triangles"]),
         "min_angle_deg" => Float64(m["min_angle_deg"]),
         "max_edge" => Float64(m["max_edge"])
+    )
+end
+
+function _convert_mesh_1d(m)
+    return Dict{String, Any}(
+        "points" => Float64.(collect(m["points"])),
+        "n_vertices" => Int(m["n_vertices"])
     )
 end
 

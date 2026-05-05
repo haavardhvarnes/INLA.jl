@@ -45,9 +45,11 @@ export FEMMatrices, spde_precision
 # M2 — SPDE2 component + PC-Matérn prior
 using GMRFs: GMRFs
 include("priors/pc_matern.jl")
+include("priors/gaussian_basis.jl")
 include("components/spde2.jl")
 
 export PCMatern, pc_matern_log_density
+export GaussianBasisPrior, log_basis_prior_density
 export SPDE2, spde_user_scale, spde_internal_scale
 
 # M3 — Mesh generation
@@ -63,6 +65,10 @@ export INLAMesh1D, inla_mesh_1d, num_segments
 # Phase M PR-2 — 1D SPDE component (depends on INLAMesh1D from M3)
 include("components/spde1d.jl")
 export SPDE1D
+
+# Phase M PR-3 — non-stationary 2D SPDE component (depends on INLAMesh from M3)
+include("components/spde2_nonstationary.jl")
+export SPDE2NonStationary, spde_precision_nonstationary
 
 # M4 — Projector
 include("projector.jl")

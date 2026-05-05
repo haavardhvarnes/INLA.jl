@@ -83,6 +83,57 @@ function spde_precision(fem::FEMMatrices, α::Integer, τ::Real, κ::Real)
 end
 
 """
+    spde_precision_nonstationary(fem::FEMMatrices, α, τ_v, κ_v) -> Q
+
+Sparse SPDE-Matérn precision with per-vertex `τ_v`, `κ_v` (vectors of
+length `n_vertices`). Implements R-INLA's `inla.spde2.matern` formula:
+
+- α = 2: `Q = D_τ · (D_κ²·C̃·D_κ² + D_κ²·G₁ + G₁·D_κ² + G₂) · D_τ`,
+  where `D_τ = diag(τ_v)`, `D_κ² = diag(κ²_v)`, and `C̃` is the lumped
+  (diagonal) mass matrix. `D_κ²·C̃·D_κ²` is just
+  `Diagonal(κ⁴_v ⊙ c̃_v)`; the cross-terms `D_κ²·G₁ + G₁·D_κ²`
+  symmetrise to `G₁_{ij}·(κ²_i + κ²_j)`.
+
+In the stationary limit (`τ_v ≡ τ`, `κ_v ≡ κ`) this reduces to
+`τ² · (κ⁴ C̃ + 2κ² G₁ + G₂)`, matching the `SPDE2` stationary
+precision. Only `α = 2` is supported for the non-stationary form;
+`α = 1` and fractional `α` are deferred (no R-INLA-parity oracle for
+either yet).
+"""
+function spde_precision_nonstationary(
+        fem::FEMMatrices, α::Integer,
+        τ_v::AbstractVector{<:Real}, κ_v::AbstractVector{<:Real}
+)
+    n = size(fem.C, 1)
+    length(τ_v) == n || throw(ArgumentError(
+        "spde_precision_nonstationary: length(τ_v) ($(length(τ_v))) " *
+        "must equal n_vertices ($n)"
+    ))
+    length(κ_v) == n || throw(ArgumentError(
+        "spde_precision_nonstationary: length(κ_v) ($(length(κ_v))) " *
+        "must equal n_vertices ($n)"
+    ))
+    all(>(0), τ_v) || throw(ArgumentError(
+        "spde_precision_nonstationary: all τ_v must be positive"
+    ))
+    all(>(0), κ_v) || throw(ArgumentError(
+        "spde_precision_nonstationary: all κ_v must be positive"
+    ))
+    α == 2 || throw(ArgumentError(
+        "spde_precision_nonstationary: only α = 2 is supported in v0.2; " *
+        "got α = $α. α = 1 and fractional α deferred."
+    ))
+    κ²_v = κ_v .^ 2
+    c̃ = diag(fem.C_lumped)
+    inner = spdiagm(0 => (κ²_v .^ 2) .* c̃) +
+            spdiagm(0 => κ²_v) * fem.G1 +
+            fem.G1 * spdiagm(0 => κ²_v) +
+            fem.G2
+    D_τ = spdiagm(0 => τ_v)
+    return D_τ * inner * D_τ
+end
+
+"""
     spde_precision(α, τ, κ, C, G1[, C_lumped, G2]) -> Q
 
 Stateless form: assemble `Q(α, τ, κ)` directly from the raw FEM matrices.

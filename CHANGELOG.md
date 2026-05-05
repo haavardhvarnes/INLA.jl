@@ -4,6 +4,215 @@ All notable changes to this repository are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.0] — 2026-05-05
+
+Phase M closes the SPDE-expansion arc — the second flagship R-INLA
+workflow. The geostatistics surface gains 1D SPDE, non-stationary SPDE
+(per-vertex `(τ, κ)`), separable space-time via a generic
+`KroneckerComponent`, and non-convex domain support in the mesh layer.
+A LatentGaussianModels-side PD-failure safety net (Phase M PR-4) lifts
+the inner Newton hot path from "throws on singular `Q`" to "returns a
+finite penalty marginal-likelihood and continues" — a general
+robustness improvement that benefits every component, not just SPDE.
+
+This is the first minor-version bump from the v0.1.x line. Bumps:
+`LatentGaussianModels.jl` 0.1.7 → 0.2.0, `INLASPDE.jl` 0.1.6 → 0.2.0,
+`INLASPDERasters.jl` 0.1.1 → 0.2.0, `INLA.jl` umbrella 0.1.5 → 0.2.0.
+`GMRFs.jl` is unchanged at 0.1.2.
+
+Three new R-INLA oracle fixtures gate the close: synthetic 1D Matérn
+(PR-2), Lindgren-Rue-Lindström 2011 §3.2 non-stationary (PR-3), and
+Cameletti et al. (2013) PM₁₀ space-time (PR-5). Oracle suite expands
+from 28 to 31 R-INLA fixtures plus 3 fmesher mesh-parity fixtures (36
+JLD2 fixtures total). Validated against R-INLA `25.10.19`, R 4.5.x.
+
+PR-7 (fractional-α SPDE via Bolin-Kirchner 2020) is documented-but-
+deferred per ADR-030 — the mathematically-correct construction needs
+state augmentation (`m·n_v` latent dim with a summation observation
+operator) that doesn't fit the per-vertex
+`AbstractLatentComponent` contract; deferral target is v0.2.1+ behind
+a new `AugmentedLatentComponent` seam.
+
+### Added
+
+**Phase M — SPDE expansion (geostatistics flagship)**
+
+- **`KroneckerMapping.apply!` / `apply_adjoint!`** (PR-1) — implements
+  the lazy `(A_space ⊗ A_time) · vec(X) = vec(A_time · X · A_space')`
+  contract for the existing struct in
+  [`observation_mapping.jl`](packages/LatentGaussianModels.jl/src/observation_mapping.jl)
+  (Phase H scaffold). Non-allocating Kronecker product application
+  without materialising the dense `kron(A_t, A_s)`. Composable with
+  `StackedMapping`. The load-bearing primitive for PR-5's
+  `KroneckerComponent`.
+- **`SPDE1D{α}` 1D SPDE component** (PR-2) — α ∈ {1, 2}, 1D Matérn
+  with ν = α − 0.5. Ships `inla_mesh_1d(loc; max_edge, cutoff,
+  boundary)` as the 1-simplex mesh constructor, closed-form 1D FEM
+  assembly (`C` mass + `G_1` stiffness on segments), `MeshProjector1D`
+  linear-interpolation projector, and a 1D-valid `PCMatern1D` PC
+  prior (`ρ = √(8ν)/κ`, `σ² = Γ(ν) / (Γ(ν+0.5) · √(4π) · κ^(2ν) ·
+  τ²)`). Fits `(time-series) ~ f(t, model = "spde")` against the
+  synthetic-1D R-INLA oracle within Phase F's 5%/15% tolerances.
+  Implementation:
+  [`packages/INLASPDE.jl/src/components/spde1d.jl`](packages/INLASPDE.jl/src/components/spde1d.jl)
+  + [`mesh/inla_mesh_1d.jl`](packages/INLASPDE.jl/src/mesh/inla_mesh_1d.jl).
+- **`SPDE2NonStationary{α}` non-stationary SPDE component** (PR-3,
+  ADR-028) — R-INLA `inla.spde2.matern(B.tau = …, B.kappa = …)`
+  parity. Per-vertex `log τ_i = (B_τ θ_τ)_i`, `log κ_i = (B_κ θ_κ)_i`
+  with `B_τ ∈ ℝ^{n_v × (p_τ+1)}` and `B_κ ∈ ℝ^{n_v × (p_κ+1)}` basis
+  matrices (intercept column + `p` spline columns). Internal `θ`
+  layout `[θ_τ_0, …, θ_τ_pτ, θ_κ_0, …, θ_κ_pκ]` length
+  `2 + p_τ + p_κ`. `α = 2` only in v0.2; α ∈ {1} deferred. Ports the
+  numerical kernel from the predecessor's
+  `IntegratedNestedLaplace.jl/dev/INLAModels/`. ADR-028 documents the
+  prior choice: `GaussianBasisPrior(mean, prec)` matches R-INLA's
+  `theta.prior.mean`/`theta.prior.prec` per-coefficient
+  parameterisation; PC-on-basis-norm deferred. Validated against the
+  Lindgren-Rue-Lindström 2011 §3.2 oracle with both stationary
+  recovery (basis coefs = 0) and non-stationary recovery within
+  Phase F tolerances. Implementation:
+  [`src/components/spde2_nonstationary.jl`](packages/INLASPDE.jl/src/components/spde2_nonstationary.jl)
+  + [`src/priors/gaussian_basis.jl`](packages/INLASPDE.jl/src/priors/gaussian_basis.jl).
+- **PD-failure safety net for the Laplace inner Newton loop** (PR-4,
+  ADR-031) — generalises the predecessor's `try/catch PosDefException →
+  smooth penalty` pattern. Three layered defenses inside
+  [`inference/laplace.jl`](packages/LatentGaussianModels.jl/src/inference/laplace.jl)
+  and [`inference/inla.jl`](packages/LatentGaussianModels.jl/src/inference/inla.jl):
+  (a) `cholesky(Symmetric(H))` failure or non-finite log-density
+  inside Newton returns a smooth penalty
+  `bad_theta_penalty = 1.0e8 + 1.0e3 · ‖θ‖²` with a dummy
+  identity-factor (type-stable `(log_p, x_warm, F)` triple);
+  (b) warm-start NaN reset zeroes the warm vector and retries cold;
+  (c) CCD/grid finite-check guards filter non-finite θ-points before
+  reweighting. ADR-031 documents the targeted exception classification
+  — `PosDefException` and `LinearAlgebra.SingularException` are the
+  caught classes; everything else propagates. Companion: GMRFs.jl
+  `AR1GMRF` and INLASPDE.jl SPDE precision now raise `DomainError`
+  on parameters outside the proper domain (instead of returning a
+  silently-singular `Q`), so the safety net catches the right
+  signals.
+- **`KroneckerComponent` separable space-time composer** (PR-5,
+  ADR-029) — generic two-component Kronecker GMRF
+  `Q = Q_space ⊗ Q_time` with hyperparameter layout
+  `θ = [θ_space; θ_time]`. Component contract methods compose
+  elementwise via Kronecker; projector via PR-1's
+  `KroneckerMapping`. Works for any
+  `(spatial::AbstractLatentComponent, temporal::AbstractLatentComponent)`
+  pair — `SPDE2 ⊗ AR1`, `SPDE2 ⊗ RW1`, etc. Specialised
+  `SPDESpaceTime` is left to user extension. Companion `AR1` `fix_τ`
+  toggle (Phase M PR-5) lets the temporal axis opt out of its own
+  precision so the spatial axis owns the joint scale — the parity
+  knob R-INLA's `f(t, model = "ar1", group = …)` defaults to.
+  Implementation:
+  [`src/components/kronecker.jl`](packages/LatentGaussianModels.jl/src/components/kronecker.jl).
+- **Mesh utilities maturity** (PR-6, ADR-032) — three deferred items
+  from
+  [`packages/INLASPDE.jl/plans/plan.md`](packages/INLASPDE.jl/plans/plan.md):
+  - **`nonconvex_hull_polygon(loc; α)`** — α-shape boundary helper
+    (Edelsbrunner-Mücke convention; large α → convex hull, small α →
+    tight wrap). Native ~80 LOC implementation on top of DT.jl's
+    Delaunay triangulation; no `ConcaveHull.jl` dep added. Returns
+    a CCW closed polygon; multi-component alpha-shapes raise
+    `ArgumentError` with guidance to lower α.
+  - **Two-region `max_edge = (inner, outer)`** — R-INLA's
+    `max.edge = c(inner, outer)` parity. Implemented via DT.jl's
+    `custom_constraint = (tri, T) -> Bool` callback so interior
+    triangles get the tighter area bound and buffer triangles only
+    satisfy the outer bound.
+  - **`subdivide_polygon(boundary, max_edge)` + opt-in
+    `subdivide_boundary = true` kwarg** — Steiner-point boundary
+    pre-subdivision converts the existing soft area-based
+    `max_edge` bound into a strict per-edge bound. Default off
+    for back-compat with existing fmesher-parity oracles.
+  Implementation:
+  [`src/mesh/boundary.jl`](packages/INLASPDE.jl/src/mesh/boundary.jl)
+  + extended [`src/mesh/inla_mesh.jl`](packages/INLASPDE.jl/src/mesh/inla_mesh.jl).
+
+### Oracle fixtures (new, R-INLA cross-checked)
+
+- **`packages/INLASPDE.jl/test/oracle/fixtures/synthetic_spde_1d.jld2`**
+  (PR-2) — synthetic 1D Matérn time series, 200 observations,
+  α=2 / ν=1.5; recovery on `(τ, κ)` within 5%/15% relative.
+- **`packages/INLASPDE.jl/test/oracle/fixtures/lindgren_rue_lindstrom_3_2.jld2`**
+  (PR-3) — Lindgren-Rue-Lindström 2011 §3.2 non-stationary SPDE on a
+  unit-square mesh; piecewise-constant `B_κ` over two regions.
+  Stationary recovery (basis coefs = 0) within Phase F's 5%/10%;
+  non-stationary recovery within 5%/15% on `(θ_τ, θ_κ)`.
+- **`packages/INLASPDE.jl/test/oracle/fixtures/cameletti_pm10.jld2`**
+  (PR-5) — Cameletti et al. (2013) PM₁₀ space-time fit, daily
+  measurements on a regional monitoring network with
+  `f(s, t, model = "spde") + f(t, model = "ar1")` Kronecker
+  construction; posterior on `(τ_s, κ_s, ρ_AR1)` within 5%/15%.
+
+### Changed
+
+- **`AR1` gains `fix_τ::Bool` toggle** (Phase M PR-5) — when `true`
+  the AR1's precision is the unit-norm AR1 covariance scaled by 1
+  (no `τ_t` hyperparameter on the temporal axis) so a Kronecker
+  composer's spatial axis owns the joint scale unambiguously.
+  Default `false`; existing AR1 users unaffected. Implementation:
+  [`src/components/ar1.jl`](packages/LatentGaussianModels.jl/src/components/ar1.jl).
+- **Domain-error classification on singular precision matrices** —
+  `GMRFs.AR1GMRF(τ, ρ)` for `τ ≤ 0` or `|ρ| ≥ 1`, and
+  `INLASPDE.spde_precision(α, τ, κ, …)` for `τ ≤ 0` or `κ ≤ 0`,
+  now raise `DomainError` instead of returning a singular `Q`.
+  Companion to PR-4's safety net — the targeted exceptions are the
+  signals the bad-θ catch path classifies.
+
+### Deferred / out of scope
+
+- **Fractional-α SPDE (Bolin-Kirchner 2020)** (ADR-030) — the
+  rational-approximation construction requires state augmentation
+  with `m·n_v` latent dim and a summation observation operator that
+  doesn't fit the per-vertex `AbstractLatentComponent` contract.
+  Documented in ADR-030 with the named prerequisite work
+  (`AugmentedLatentComponent` + `LinearCombinationMapping`) and
+  v0.2.1+ deferral target. No `SPDEFractional` skeleton ships in
+  v0.2.0.
+- **SPDE on the sphere, 3D SPDE, non-separable space-time SPDE,
+  hollow domains, multi-region (>2) `max_edge`, R-INLA
+  `inla.nonconvex.hull` morphological-closing parity** — tracked in
+  [`packages/INLASPDE.jl/plans/plan.md`](packages/INLASPDE.jl/plans/plan.md)
+  under "Deferred to v0.3+".
+
+### ADRs added in this release
+
+- **ADR-027** — IS-correction port from `IntegratedNestedLaplace.jl`
+  declined for v0.x; re-routed to a per-workflow `ISINLA <:
+  AbstractInferenceStrategy` if/when a Bayesian-lasso /
+  quantile-regression / missing-covariate use case appears.
+- **ADR-028** — Gaussian-basis prior on non-stationary SPDE
+  coefficients matches R-INLA's `theta.prior.mean` / `theta.prior.prec`
+  per-coefficient parameterisation; PC-on-basis-norm deferred.
+- **ADR-029** — `KroneckerComponent` is a generic two-component
+  Kronecker composer; specialised `SPDESpaceTime` is user-extensible.
+- **ADR-030** — Fractional-α SPDE deferred to v0.2.1+; documents the
+  state-augmentation requirement and the prerequisite seam.
+- **ADR-031** — Targeted exception classification in the Laplace
+  bad-θ wrapper (`PosDefException`, `SingularException`); other
+  exceptions propagate.
+- **ADR-032** — Mesh utilities maturity: alpha-shape boundary, tuple
+  `max_edge`, opt-in boundary pre-subdivision.
+
+### Compatibility notes
+
+- **`LatentGaussianModels = "0.2"`** required by `INLASPDE.jl`,
+  `INLASPDERasters.jl`, and the `INLA.jl` umbrella in v0.2.0. The
+  Phase L close in v0.1.5 is the last v0.1 line release.
+- **`INLASPDE = "0.2"`** required by `INLASPDERasters.jl` and the
+  `INLA.jl` umbrella.
+- **`GMRFs = "0.1"` unchanged.** Phase M did not change the GMRFs
+  public surface (the AR1 `DomainError` is a stricter validation,
+  not a contract change).
+- Public API additions are non-breaking; the Phase M close gets a
+  minor-version bump because (a) Phase L was the natural close of
+  the v0.1 line per
+  [`plans/conti-valiant-pebble.md`](plans/conti-valiant-pebble.md),
+  and (b) the cross-package compat bumps mean `Pkg` would not
+  resolve a v0.1 install against v0.2 packages anyway. There is no
+  silent-difference deprecation; every existing v0.1 fixture passes
+  unchanged.
+
 ## [v0.1.5] — 2026-05-04
 
 Phase L is the marquee deliverable: `UserComponent` (R-INLA `rgeneric`

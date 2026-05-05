@@ -60,6 +60,9 @@ using GMRFs
     @testset "KroneckerMapping — Phase M PR-1" begin
         include("regression/test_kronecker_mapping.jl")
     end
+    @testset "KroneckerComponent — Phase M PR-5" begin
+        include("regression/test_kronecker.jl")
+    end
     @testset "BYM" begin
         include("regression/test_bym.jl")
     end

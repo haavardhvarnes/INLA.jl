@@ -3423,6 +3423,187 @@ The penalty form `1.0e10 + 1.0e3 · ‖θ‖²` is unchanged.
 
 ---
 
+## ADR-032: Mesh utilities maturity — alpha-shape boundary, tuple `max_edge`, boundary pre-subdivision
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase M PR-6 closes three deferred items in
+[`packages/INLASPDE.jl/plans/plan.md:100-109`](packages/INLASPDE.jl/plans/plan.md):
+
+1. **Nonconvex hull helper.** R-INLA's `inla.nonconvex.hull(loc, convex)`
+   wraps a point cloud with an α-concave polygon — used when the
+   convex hull over-extends into empty regions (coastline data, river
+   networks, study regions with holes). v0.1 ships only
+   `convex_hull_polygon`; users with non-convex domains have had to
+   hand-build the boundary as a `k × 2` matrix.
+2. **Two-region `max_edge`.** R-INLA's `max.edge = c(inner, outer)`
+   refines the data region tighter than the buffer ring outside.
+   Critical for cost-controlled SPDE work: a single `max_edge` either
+   over-refines the buffer (wasted vertices) or under-refines the data
+   region (poor SPDE accuracy where it matters). Today the API is
+   single-valued.
+3. **Boundary pre-subdivision.** The current `max_edge` is enforced via
+   the equilateral-area Ruppert bound (`max_area = √3/4 · max_edge²`),
+   which is *soft* on edge lengths — boundary edges in the input
+   polygon longer than `max_edge` survive refinement at their input
+   length. The existing `test_mesh_quality.jl` regression accepts
+   `max_edge_J ≤ 1.5 · max_edge` for that reason.
+
+The three items can be tackled independently but ship together because
+they share the same critical file (`src/mesh/inla_mesh.jl` +
+`src/mesh/boundary.jl`) and the same test surface.
+
+A fourth design call sits underneath: do we adopt `ConcaveHull.jl`
+(small Julia package, alpha-shape based) as a `[deps]` entry, or roll
+our own α-shape over the `DelaunayTriangulation.jl` we already depend
+on?
+
+### Decision
+
+#### Alpha-shape: roll our own
+
+Implement `nonconvex_hull_polygon(loc; α)` natively in
+`src/mesh/boundary.jl`, ~80 LOC including boundary tracing. The
+algorithm:
+
+1. Compute Delaunay triangulation of `loc` via DT.jl (already a dep).
+2. For each triangle, compute its circumradius `r`. Keep iff `r ≤ α`
+   (Edelsbrunner alpha-shape convention; large α → convex hull, small
+   α → tight wrap around points).
+3. Boundary edges = edges incident to exactly one kept triangle.
+4. Trace boundary into a CCW closed polygon; orient via signed area.
+
+ConcaveHull.jl would have added Distances, NearestNeighbors,
+StaticArrays, RecipesBase, StatsAPI, PrecompileTools, AbstractTrees as
+transitive deps for ~50 LOC of work we can do directly on top of DT.
+The ADR weighs the dep footprint against the maintenance cost; with DT
+already giving us the triangulation, the maintenance cost of ~80 LOC is
+the smaller burden. CLAUDE.md's policy is that new `[deps]` entries
+need explicit justification, and "saving 50 LOC" doesn't clear that
+bar.
+
+The α parameter is exposed directly (no auto-tuned default that
+depends on point density). Default `α = 2 · median(nearest-neighbour
+distance)` for the convenience case where the user just wants
+"reasonable concavity".
+
+API restriction: only **simply-connected** alpha-shapes (single closed
+loop) are returned. Multi-component or hollow alpha-shapes throw
+`ArgumentError` with guidance to lower α. R-INLA's `inla.nonconvex.hull`
+also enforces simple connectivity.
+
+#### Two-region `max_edge`: tuple API + DT.jl `custom_constraint` callback
+
+Public API extension to `inla_mesh_2d`:
+
+```julia
+inla_mesh_2d(loc; max_edge = (inner, outer), offset = (inner, outer), …)
+```
+
+When both `max_edge` and `offset` are 2-tuples, the inner boundary is
+`expand_polygon(hull(loc), offset[1])` and the outer boundary is
+`expand_polygon(inner, offset[2])`. Refinement uses
+`DelaunayTriangulation.refine!(tri; max_area = max_area_outer,
+custom_constraint = (tri, T) -> centroid_inside_inner(T) ?
+area(T) > max_area_inner : false)` so that interior triangles get the
+tighter area bound and exterior (buffer) triangles only need to satisfy
+the outer area bound.
+
+Single-valued `max_edge::Real` keeps its current behaviour. Tuple input
+without paired tuple `offset` errors at construction.
+
+Explicit `boundary` input remains single-region (one polygon, one
+`max_edge`). Two-region with explicit boundary is deferred — needs an
+explicit nested-polygon API which is bigger scope.
+
+#### Boundary pre-subdivision: opt-in, default off (back-compat)
+
+New kwarg `subdivide_boundary::Bool = false`. When true:
+
+1. Walk the input boundary polygon (after `expand_polygon`/`offset`
+   resolution but before triangulation).
+2. For each consecutive pair `(p_i, p_{i+1})`, if `dist > max_edge_outer`
+   (or `max_edge` in single-region mode), split into
+   `⌈dist / max_edge⌉` equally-spaced segments by inserting Steiner
+   points before the constrained Delaunay step.
+3. The triangulation then sees those points as boundary vertices, and
+   Ruppert refinement preserves them.
+
+Default is `false` because turning it on changes mesh statistics
+(vertex count, boundary count) on every existing fixture — the
+fmesher-parity oracle would need to be regenerated. The opt-in path
+gives users who hit the soft-bound problem a sharp tool; existing
+behaviour is unchanged.
+
+When `subdivide_boundary = true` and refinement passes, the bound
+becomes strict: `max_edge_J ≤ max_edge` to within DT's refinement
+roundoff (~1e-12).
+
+### Consequences
+
+#### Positive
+
+- Users with non-convex domains can build the boundary in one call
+  instead of hand-building a polygon matrix, lowering the on-ramp for
+  coastline / watershed / study-region SPDE work.
+- Users with deep buffer rings (e.g. SPDE oracles on small data
+  regions inside large extension zones) save vertex count by an order
+  of magnitude — the Cameletti M PR-5 mesh, hypothetically, drops from
+  ~1000 to ~200 vertices with `max_edge = (0.15, 0.4)`.
+- The strict `max_edge` path closes a long-standing footnote in
+  `test_mesh_quality.jl` (the 1.5× soft bound). Critical for hand-
+  computed FEM-error analyses where a known max edge is load-bearing.
+- No new `[deps]` entries — INLASPDE.jl's dependency surface stays at
+  its v0.1 size.
+
+#### Negative
+
+- ~250 LOC added to `src/mesh/`. The alpha-shape implementation has a
+  documented edge case (multi-component alpha shapes) where it errors
+  out — users may need to retry with a different α.
+- The two-region API doubles the `max_edge` / `offset` parameter
+  surface. Documentation and examples carry both the scalar and tuple
+  forms.
+- Pre-subdivision opt-in vs default-on is a hedge. We may flip the
+  default to `true` in v0.3 once existing fixtures have been
+  regenerated and the fmesher-parity oracle's margin has tightened.
+
+#### Out of scope (deferred to v0.3+)
+
+- **R-INLA `inla.nonconvex.hull(loc, convex, concave, …)` parity.**
+  R-INLA's helper uses a morphological-closing algorithm with a
+  smoothing radius, not a strict alpha-shape. Our helper is
+  Edelsbrunner-style; for users who need pixel-identical R-INLA
+  geometry, a separate `INLASPDEFmesher.jl` extension that calls into
+  `fmesher` over the JLL-shipped binary remains an option (ADR-007's
+  deferred fallback).
+- **Multi-region max_edge with N > 2 regions.** R-INLA accepts
+  `max.edge = c(0.1, 0.3, 0.5)` for three nested regions. We ship the
+  inner/outer 2-tuple only.
+- **Hollow domains.** Polygons with interior holes (lakes inside a
+  watershed) need a multi-loop boundary representation; deferred.
+
+### References
+
+- [`packages/INLASPDE.jl/src/mesh/inla_mesh.jl`](packages/INLASPDE.jl/src/mesh/inla_mesh.jl)
+  — `inla_mesh_2d` API extension for tuple `max_edge`/`offset` and
+  the `subdivide_boundary` flag.
+- [`packages/INLASPDE.jl/src/mesh/boundary.jl`](packages/INLASPDE.jl/src/mesh/boundary.jl)
+  — `nonconvex_hull_polygon` + `subdivide_polygon`.
+- [`packages/INLASPDE.jl/test/regression/test_mesh_nonconvex.jl`](packages/INLASPDE.jl/test/regression/test_mesh_nonconvex.jl)
+  — alpha-shape, two-region, and pre-subdivision regression suites.
+- DT.jl's `refine!(tri; custom_constraint = ...)` is the
+  region-aware refinement primitive used by the two-region path.
+- ADR-007 — INLASPDEFmesher.jl deferred fallback for users who need
+  fmesher-pixel-identical mesh geometry.
+- Edelsbrunner & Mücke 1994, "Three-dimensional alpha shapes" — base
+  algorithm; we implement the 2D restriction.
+
+---
+
 ## ADR template for future entries
 
 ```

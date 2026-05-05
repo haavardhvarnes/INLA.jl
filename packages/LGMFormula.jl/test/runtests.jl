@@ -11,4 +11,5 @@ include("test_utils.jl")
     include("regression/test_macroexpand.jl")
     include("regression/test_roundtrip.jl")
     include("regression/test_error_messages.jl")
+    include("regression/test_components.jl")
 end

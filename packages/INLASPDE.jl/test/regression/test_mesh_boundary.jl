@@ -87,3 +87,131 @@ end
     @test cutoff_dedup(pts, 0.0) == Matrix{Float64}(pts)
     @test cutoff_dedup(pts, -1.0) == Matrix{Float64}(pts)
 end
+
+# ---------------------------------------------------------------------
+# nonconvex_hull_polygon (alpha-shape) — Phase M PR-6
+# ---------------------------------------------------------------------
+
+# Polygon signed area via shoelace (closed loop). Used as the witness
+# that the alpha-shape correctly traces a non-convex region.
+_polygon_area(P) = begin
+    n = size(P, 1)
+    s = 0.0
+    for i in 1:n
+        j = i == n ? 1 : i + 1
+        s += P[i, 1] * P[j, 2] - P[j, 1] * P[i, 2]
+    end
+    return 0.5 * s
+end
+
+@testset "nonconvex_hull_polygon — convex limit equals convex hull" begin
+    pts = [0.0 0.0; 1.0 0.0; 1.0 1.0; 0.0 1.0; 0.5 0.5; 0.3 0.7]
+    hull = convex_hull_polygon(pts)
+    nch = nonconvex_hull_polygon(pts; α=10.0)
+    @test size(nch, 1) == size(hull, 1)
+    nch_set = Set(Tuple(nch[i, :]) for i in axes(nch, 1))
+    hull_set = Set(Tuple(hull[i, :]) for i in axes(hull, 1))
+    @test nch_set == hull_set
+end
+
+@testset "nonconvex_hull_polygon — L-shape captures concavity" begin
+    # Regular grid on an L-shape: unit square minus the open upper-right
+    # quarter (x > 0.5, y > 0.5). True area = 0.75.
+    h = 0.1
+    rows = NTuple{2, Float64}[]
+    for i in 0:10, j in 0:10
+        x, y = i * h, j * h
+        if x <= 0.5 || y <= 0.5
+            push!(rows, (x, y))
+        end
+    end
+    P = Matrix{Float64}(undef, length(rows), 2)
+    for (k, p) in enumerate(rows)
+        P[k, 1], P[k, 2] = p
+    end
+
+    # α slightly above the within-cell circumradius (≈ h√2/2 ≈ 0.0707) and
+    # below the smallest notch-spanning circumradius (≈ 0.158). The cell
+    # at the concave corner survives the α-cutoff and cuts that corner with
+    # one chord; the boundary still tracks the L-shape away from the corner.
+    poly = nonconvex_hull_polygon(P; α=0.15)
+    @test size(poly, 1) > size(convex_hull_polygon(P), 1)
+    @test _polygon_area(poly) ≈ 0.75 atol=0.02
+    # Convex hull would have area 1.0 — the alpha-shape is closer to 0.75.
+    @test _polygon_area(poly) < 0.9
+end
+
+@testset "nonconvex_hull_polygon — CCW orientation invariant" begin
+    pts = [0.0 0.0; 1.0 0.0; 1.0 1.0; 0.0 1.0; 0.5 0.5]
+    poly = nonconvex_hull_polygon(pts; α=10.0)
+    @test _polygon_area(poly) > 0
+end
+
+@testset "nonconvex_hull_polygon — argument validation" begin
+    pts = [0.0 0.0; 1.0 0.0; 0.5 1.0]
+    @test_throws ArgumentError nonconvex_hull_polygon(pts; α=-1.0)
+    @test_throws ArgumentError nonconvex_hull_polygon(pts; α=0.0)
+    @test_throws ArgumentError nonconvex_hull_polygon([0.0 0.0; 1.0 1.0]; α=1.0)
+    @test_throws ArgumentError nonconvex_hull_polygon(rand(5, 3); α=1.0)
+end
+
+@testset "nonconvex_hull_polygon — empty alpha-shape errors" begin
+    # Three widely-separated points; α tiny ⇒ no triangle survives.
+    pts = [0.0 0.0; 10.0 0.0; 5.0 10.0]
+    @test_throws ArgumentError nonconvex_hull_polygon(pts; α=0.1)
+end
+
+# ---------------------------------------------------------------------
+# subdivide_polygon — Phase M PR-6
+# ---------------------------------------------------------------------
+
+@testset "subdivide_polygon — unit square at max_edge=0.2" begin
+    sq = [0.0 0.0; 1.0 0.0; 1.0 1.0; 0.0 1.0]
+    sub = subdivide_polygon(sq, 0.2)
+    @test size(sub, 2) == 2
+    n = size(sub, 1)
+    @test n >= size(sq, 1)
+    # Closed-loop consecutive distances all ≤ max_edge.
+    for i in 1:n
+        j = i == n ? 1 : i + 1
+        d = hypot(sub[j, 1] - sub[i, 1], sub[j, 2] - sub[i, 2])
+        @test d <= 0.2 + 1.0e-12
+    end
+    # Original corners preserved.
+    for r in axes(sq, 1)
+        present = any(
+            isapprox(sub[k, 1], sq[r, 1]; atol=1.0e-12) &&
+                isapprox(sub[k, 2], sq[r, 2]; atol=1.0e-12)
+            for k in axes(sub, 1)
+        )
+        @test present
+    end
+end
+
+@testset "subdivide_polygon — non-uniform edges" begin
+    # Triangle with edges of three different lengths.
+    tri = [0.0 0.0; 4.0 0.0; 0.0 3.0]   # edges 4, 5, 3
+    sub = subdivide_polygon(tri, 1.0)
+    n = size(sub, 1)
+    for i in 1:n
+        j = i == n ? 1 : i + 1
+        d = hypot(sub[j, 1] - sub[i, 1], sub[j, 2] - sub[i, 2])
+        @test d <= 1.0 + 1.0e-12
+    end
+    @test n >= 4 + 5 + 3   # at least one vertex per max_edge segment
+end
+
+@testset "subdivide_polygon — short edges unchanged" begin
+    sq = [0.0 0.0; 0.1 0.0; 0.1 0.1; 0.0 0.1]
+    sub = subdivide_polygon(sq, 0.5)
+    @test size(sub) == size(sq)
+    @test sub == Matrix{Float64}(sq)
+end
+
+@testset "subdivide_polygon — argument validation" begin
+    sq = [0.0 0.0; 1.0 0.0; 1.0 1.0; 0.0 1.0]
+    @test_throws ArgumentError subdivide_polygon(sq, 0.0)
+    @test_throws ArgumentError subdivide_polygon(sq, -1.0)
+    @test_throws ArgumentError subdivide_polygon([0.0 0.0; 1.0 1.0], 0.1)
+    @test_throws ArgumentError subdivide_polygon(rand(5, 3), 0.1)
+end

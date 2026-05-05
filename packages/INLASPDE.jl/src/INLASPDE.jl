@@ -59,6 +59,7 @@ include("mesh/inla_mesh.jl")
 include("mesh/inla_mesh_1d.jl")
 
 export convex_hull_polygon, expand_polygon, cutoff_dedup
+export nonconvex_hull_polygon, subdivide_polygon
 export INLAMesh, inla_mesh_2d, num_vertices, num_triangles
 export INLAMesh1D, inla_mesh_1d, num_segments
 

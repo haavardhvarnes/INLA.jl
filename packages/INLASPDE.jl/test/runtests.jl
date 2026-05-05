@@ -28,6 +28,10 @@ using INLASPDE
         include("regression/test_spde2_nonstationary_component.jl")
     end
 
+    @testset "Safety net — Phase M PR-4 (SPDE2 triangulation)" begin
+        include("regression/test_safety_net_spde.jl")
+    end
+
     @testset "M3 — Mesh generation" begin
         include("regression/test_mesh_boundary.jl")
         include("regression/test_mesh_quality.jl")

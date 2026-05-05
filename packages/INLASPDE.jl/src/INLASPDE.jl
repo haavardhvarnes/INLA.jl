@@ -36,8 +36,10 @@ using SciMLOperators: SciMLOperators
 include("assembly/fem.jl")
 include("assembly/lumping.jl")
 include("assembly/precision.jl")
+include("assembly/fem_1d.jl")
 
-export assemble_fem_matrices, lumped_mass, stiffness_squared
+export assemble_fem_matrices, assemble_fem_matrices_1d
+export lumped_mass, stiffness_squared
 export FEMMatrices, spde_precision
 
 # M2 — SPDE2 component + PC-Matérn prior
@@ -52,13 +54,20 @@ export SPDE2, spde_user_scale, spde_internal_scale
 include("coercion.jl")
 include("mesh/boundary.jl")
 include("mesh/inla_mesh.jl")
+include("mesh/inla_mesh_1d.jl")
 
 export convex_hull_polygon, expand_polygon, cutoff_dedup
 export INLAMesh, inla_mesh_2d, num_vertices, num_triangles
+export INLAMesh1D, inla_mesh_1d, num_segments
+
+# Phase M PR-2 — 1D SPDE component (depends on INLAMesh1D from M3)
+include("components/spde1d.jl")
+export SPDE1D
 
 # M4 — Projector
 include("projector.jl")
+include("projector_1d.jl")
 
-export MeshProjector, scimloperator
+export MeshProjector, MeshProjector1D, scimloperator
 
 end # module

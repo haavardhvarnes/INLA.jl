@@ -3142,6 +3142,165 @@ Three options were on the table:
 
 ---
 
+## ADR-029: `KroneckerComponent` — generic two-component Kronecker composer for separable space-time GMRFs
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase M PR-5 lands the separable space-time piece of the SPDE
+expansion arc per [`plans/replan-2026-04-28.md`](plans/replan-2026-04-28.md)
+lines 372–405. The Cameletti et al. (2013) PM₁₀ air-pollution case
+study is the third of the three Phase M oracle fixtures, and
+canonically expresses the spatio-temporal field as a Kronecker product
+of an SPDE-Matérn spatial GMRF and an AR(1) temporal GMRF —
+`Q = Q_space ⊗ Q_time`. R-INLA expresses this through `f(field, model
+= spde, group = time, control.group = list(model = "ar1"))`, which is
+internally a Kronecker construction.
+
+The new latent component must compose two child `AbstractLatentComponent`s
+into one whose precision matrix is the Kronecker product. The design
+question: does the composer ship as
+
+a. a **generic two-component Kronecker composer** —
+   `KroneckerComponent(spatial, temporal)` accepting any pair of
+   `AbstractLatentComponent`, with hyperparameters concatenated as
+   `θ = [θ_space; θ_time]`; or
+
+b. a **specialised `SPDESpaceTime`** type that bakes in the SPDE2
+   spatial side, the AR1 / RW1 temporal side, and the mesh-and-time
+   metadata explicitly?
+
+PR-1 already shipped the `KroneckerMapping` projector covering the
+observation side (`(A_space ⊗ A_time)`). The component side is the
+remaining seam.
+
+### Decision
+
+Ship the **generic** `KroneckerComponent(spatial, temporal)` composer
+in `LatentGaussianModels.jl`. Concretely:
+
+1. **API**
+
+   ```julia
+   struct KroneckerComponent{S<:AbstractLatentComponent,
+                             T<:AbstractLatentComponent} <: AbstractLatentComponent
+       space::S
+       time::T
+   end
+   ```
+
+   No keyword arguments at construction; the children carry their
+   priors, sizes, and hyperparameter layouts. The composer adds no
+   hyperparameters of its own.
+
+2. **Hyperparameter layout — concatenation, not sharing.**
+   `nhyperparameters(c) = nhyperparameters(c.space) +
+   nhyperparameters(c.time)`. The internal-scale θ is sliced as
+   `θ_s = θ[1:p_s]`, `θ_t = θ[p_s+1:end]`, and dispatched verbatim to
+   the children. This contrasts with `Replicate` (which *shares* a
+   single θ block across replicates) and matches R-INLA's `group =`
+   surface where the spatial and temporal precisions have independent
+   priors.
+
+3. **Precision = `kron(Q_s, Q_t)`.** The Kronecker order matches the
+   PR-1 `KroneckerMapping` storage convention
+   (`(A_space ⊗ A_time) vec(X) = vec(A_time · X · A_space')`, with `X`
+   `(time × space)`); the precision and the projector compose with the
+   same flattening. `precision_matrix(c, θ) =
+   kron(precision_matrix(c.space, θ_s), precision_matrix(c.time, θ_t))`
+   stays sparse (`SparseArrays.kron`).
+
+4. **Log normalising constant via the Kronecker logdet identity.**
+
+   ```
+   log |Q_s ⊗ Q_t| = n_t · log|Q_s| + n_s · log|Q_t|
+   ```
+
+   We never materialise the Kronecker product to compute the
+   normalising constant. Each child already implements
+   `log_normalizing_constant`, so the composer can rebuild
+   `log|Q_s| = 2·(log_normc_s + ½ n_s log(2π))` and combine — but
+   that round-trip is fragile when a child is intrinsic (its
+   structural log-det is dropped from `log_normc`). Concretely, we
+   require each child component to return a *finite* `log_normalizing_constant`
+   (proper Gaussian log-NC), and reject `KroneckerComponent` over
+   intrinsic children at construction time. The Cameletti workflow
+   uses SPDE2 ⊗ AR1 — both proper, no intrinsic complication. RW1 ⊗
+   IID requires its own ADR (PR-5 follow-up).
+
+5. **Constraints — pass through if at most one child is constrained.**
+   When neither child has a constraint, the composer returns
+   `NoConstraint`. When only one child carries an `LinearConstraint
+   (A_c, e_c)`, the composer lifts it to the Kronecker dimension via
+   the appropriate Kronecker product with `I` on the unconstrained
+   axis. When both children are constrained, throw
+   `ArgumentError` — the joint-constraint case (rank, conditioning-
+   by-kriging interaction with the Kronecker factor) is non-trivial
+   and not exercised by Phase M's oracle fixtures.
+
+6. **Prior mean — Kronecker of children's prior means.** When both
+   children's `prior_mean` are zero (the default), the composed mean
+   is zero. When non-zero, the composed mean is
+   `kron(μ_space, μ_time)` (interpreting both as column vectors), which
+   matches the latent flattening convention from item 3.
+
+### Consequences
+
+#### Positive
+
+- One file, ~120 LOC. Reuses every contract method on the children.
+- Cameletti SPDE2 ⊗ AR1 is the immediate consumer; AR1 ⊗ AR1, AR1 ⊗
+  IID, and Generic0 ⊗ AR1 are tested by composition without needing
+  INLASPDE in the LGM regression suite.
+- Future SPDE work (e.g. Cameletti's `RW2` temporal variant) drops in
+  by swapping the `time` child — no new types.
+- The PR-1 `KroneckerMapping` and PR-5 `KroneckerComponent` form a
+  matched pair; ADR-017's projector seam already exposes the
+  observation-side composition.
+- Third-party components (a user's `Generic2` ⊗ AR1, a custom seasonal
+  ⊗ SPDE2) just work without touching the composer.
+
+#### Neutral
+
+- Hyperparameter ordering is `[θ_space; θ_time]` by convention, not
+  `[θ_time; θ_space]`. We document this in the `KroneckerComponent`
+  docstring and align the kron order so the user-facing flattening is
+  consistent.
+- Component children must implement `log_normalizing_constant`. All
+  v0.1 concrete components do.
+
+#### Negative
+
+- The intrinsic-child case (RW1 ⊗ AR1, RW2 ⊗ AR1) is deferred. The
+  Kronecker logdet identity still holds in form, but the Marriott-Van
+  Loan correction for the joint constraint requires extra work; we do
+  not attempt it in PR-5.
+- Rejecting the doubly-constrained case is conservative; some users
+  may want it. The error message points at the deferral.
+- A specialised `SPDESpaceTime{α}` could carry mesh-aware diagnostic
+  helpers (e.g. spatial-marginal extraction at each time slice). We
+  defer those to user-space helpers built on top of the generic
+  composer.
+
+### References
+
+- Cameletti, Lindgren, Simpson, Rue (2013), AStA 97(2):109–131 — the
+  PM₁₀ air-pollution case study; `f(field, model = spde, group =
+  time, control.group = list(model = "ar1"))`.
+- Lindgren, Rue, Lindström (2011), JRSSB B 73(4) — SPDE-Matérn
+  precision construction; the spatial side of the Kronecker.
+- ADR-017 — `AbstractObservationMapping` projector seam; PR-1
+  `KroneckerMapping` is the projector counterpart of this component.
+- [`packages/LatentGaussianModels.jl/src/observation_mapping.jl:296`](packages/LatentGaussianModels.jl/src/observation_mapping.jl)
+  — `KroneckerMapping` flattening convention this component matches.
+- [`packages/LatentGaussianModels.jl/src/components/replicate.jl`](packages/LatentGaussianModels.jl/src/components/replicate.jl)
+  — nearest precedent (block-diagonal composer with *shared* θ);
+  this ADR's design contrasts via concatenated θ.
+
+---
+
 ## ADR-031: Targeted exception classification in the Laplace bad-θ wrapper
 
 Status: Accepted

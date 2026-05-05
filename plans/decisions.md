@@ -3604,6 +3604,251 @@ roundoff (~1e-12).
 
 ---
 
+## ADR-030: Fractional-α SPDE (Bolin-Kirchner 2020) — deferred to v0.2.1+; Phase M closes at PR-6
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase M's plan
+([`plans/conti-valiant-pebble.md`](conti-valiant-pebble.md)) carried a
+stretch tail PR-7 — fractional-α SPDE via the Bolin-Kirchner 2020
+rational approximation:
+
+```math
+(\kappa^2 - \Delta)^{-\alpha/2} \approx \sum_{k=1}^{m} r_k \,
+    (\kappa^2 - \Delta + s_k)^{-1}
+```
+
+with poles `s_k > 0` and weights `r_k` from a degree-`m` Padé fit. The
+plan suggested implementing `SPDEFractional` as "a sum of `m`
+integer-α=1 SPDE precision matrices with shifted κ", with default
+`m = 4` covering `α ∈ (0.5, 2.5)` to ~3 digits of accuracy.
+
+Phase M PRs 1–6 closed cleanly (KroneckerMapping, 1D SPDE,
+non-stationary SPDE, PD-failure safety net, separable space-time,
+mesh utilities maturity). With the stretch tail nominally available,
+the natural moment to either commit to PR-7 or document the deferral
+is now — before tagging v0.2.0.
+
+A closer read of Bolin-Kirchner 2020 ("The Rational SPDE Approach for
+Gaussian Random Fields With General Smoothness", JCGS 29(2),
+arXiv:1711.04333) and the production reference implementation at
+[`finnlindgren/rSPDE`](https://github.com/finnlindgren/rSPDE) surfaced
+three things:
+
+1. **The plan's "sum of integer-α=1 precision matrices" sketch is
+   wrong, mathematically.** Rational approximation of the *covariance*
+   operator gives a sum of integer-α covariances; that is **not** a
+   sum of precisions. If `Σ_α ≈ Σ_k r_k · Σ_{α=1, κ_k}`, then the
+   precision is the inverse of that sum — *dense*, not sparse, and
+   not equal to `Σ_k r_k · Q_{α=1, κ_k}`. The naive sum-of-precisions
+   formula yields a different covariance operator entirely, with no
+   theoretical link to the fractional Matérn target.
+
+2. **The correct rational-SPDE construction needs state augmentation.**
+   Following Bolin-Kirchner §2.3 and the rSPDE implementation, the
+   sparse-precision-preserving form introduces auxiliary fields
+   `v_k ∈ ℝ^{n_v}` for `k = 1, …, m`, each satisfying a stationary
+   integer-α=1 SPDE `(K + s_k C̃) v_k = √(C̃) W_k` with independent
+   white noise `W_k`. The field of interest is the linear combination
+   `u = Σ_k √(r_k) · v_k`. The joint state `(v_1, …, v_m)` has
+   *block-diagonal* sparse precision of size `m·n_v × m·n_v`; the
+   marginal precision on `u` alone is *dense*. SPDE inference therefore
+   requires fitting on the augmented `m·n_v`-dimensional latent
+   vector, with a partial observation operator that reads off
+   `u(s_obs) = Σ_k √(r_k) · A_obs · v_k`.
+
+3. **This doesn't fit cleanly into LGM's per-vertex
+   `AbstractLatentComponent` contract.** The contract
+   ([`packages/LatentGaussianModels.jl/src/components/abstract.jl`](../packages/LatentGaussianModels.jl/src/components/abstract.jl))
+   assumes one component owns one scalar field of dimension `length(c)`
+   with one sparse `precision_matrix(c, θ) -> SparseMatrixCSC`. The
+   rational-SPDE construction violates this in two places: (a) the
+   "field of interest" `u` is *not* the latent vector — it is a
+   linear functional of the augmented state; (b) the
+   `MeshProjector` A-matrix maps mesh vertices to observation points
+   for *one* field, not for `m` stacked auxiliary fields tied by a
+   summation operator.
+
+   Concretely, fitting a rational-SPDE component would need either:
+   - A new `AugmentedComponent` abstraction wrapping `m` integer-α
+     SPDE2 components plus a "summation observation operator" — an
+     `AbstractObservationMapping` (per ADR-017) that does
+     `Σ_k √(r_k) · A_obs · v_k` instead of `A_obs · u`; or
+   - An adapter that lifts `(SPDE2, SPDE2, …, SPDE2)` through a custom
+     `MeshProjector` and synthesises a single virtual `precision_matrix`
+     by stacking the block-diagonal augmented precision — but this
+     leaks the augmentation up to the LGM solver and breaks the
+     `length(c) = n_v` invariant assumed by `prior_mean`,
+     `constraints`, marginal-strategy code, and the inner Newton hot
+     path.
+
+   The first option is structurally clean but is multi-day work — a
+   new abstraction in LatentGaussianModels.jl, a new observation
+   mapping subtype, and end-to-end coverage of the Newton/Laplace
+   path with augmented latents. That is not a "stretch tail" item; it
+   is a phase-shape change.
+
+4. **No predecessor port path.** The user's predecessor
+   `IntegratedNestedLaplace.jl` does not implement fractional-α. There
+   is no existing kernel to graduate — PR-7 is a fresh write
+   regardless. Stretch-tail justification for shipping in Phase M
+   relied on the plan's (incorrect) "shifted-κ sum of precisions"
+   sketch; once the actual construction is in view, the LOC budget
+   is closer to PR-3's port (~500 LOC across LGM + INLASPDE) than
+   PR-6's mesh utilities work (~250 LOC, single package).
+
+5. **No oracle-fixture obligation.** The replan's three Phase M
+   oracles (synthetic 1D, Lindgren-Rue-Lindström §3.2, Cameletti
+   PM10) all landed with PRs 2/3/5; PR-7 was always a stretch with no
+   gating fixture. Deferring it does not move the phase-close gate.
+
+### Decision
+
+1. **Phase M closes at PR-6.** No fractional-α SPDE in v0.2.0. The
+   replan's Phase M scope item (5/5) ships as documented-but-deferred,
+   mirroring the v0.x discipline that "stretch" means "ship if the
+   architecture happens to fit, defer otherwise" (precedent: ADR-027,
+   PR-7(b) IS-correction; ADR-015, `LGMFormula.jl` /
+   `GMRFsPardiso.jl` deferred from v0.1).
+
+2. **The deferral target is v0.2.1+, not "Phase M+1".** Fractional-α
+   SPDE is a single component with a localised infrastructure
+   prerequisite (the augmentation seam in LGM); it does not need its
+   own phase. When the prerequisite work lands — either as a v0.2.x
+   minor item or as part of a future phase that has independent need
+   for `AbstractObservationMapping` extensions — the SPDE component
+   is then ~1 PR of pure rational-approximation arithmetic on top.
+
+3. **The infrastructure prerequisite is named explicitly**:
+   `AugmentedLatentComponent` (or equivalent) in
+   `LatentGaussianModels.jl` that lets one logical "field of interest"
+   be a linear functional of a stacked block-diagonal latent vector,
+   with a paired `AbstractObservationMapping` subtype that performs
+   the summation. This is general-purpose: it covers rational-SPDE,
+   the SPDE-on-sphere construction (which uses a similar
+   augmentation), and any future model whose "user-facing field" is
+   a linear combination of multiple latent components. It is **not**
+   committed to v0.2.x — it lands when a use case arrives.
+
+4. **No `SPDEFractional` skeleton ships.** No placeholder struct, no
+   throwing constructor, no documented-but-empty API surface. The
+   v0.2.0 release ships `SPDE2` (α ∈ {1, 2}, 2D), `SPDE1D`
+   (α ∈ {1, 2}, 1D), `SPDE2NonStationary` (α ∈ {1, 2}, 2D,
+   per-vertex `(τ, κ)`), and the Kronecker composer. Fractional-α is
+   absent — users who need it know to wait, not to find a half-built
+   API.
+
+5. **The replan's Phase M scope of 5 items closes as 4 items shipped
+   + 1 deferred.** This is honest and traceable; the alternative
+   (rushing a structurally-wrong implementation through stretch
+   bandwidth) would have created technical debt the v0.2.x line
+   would then have to unwind.
+
+### Consequences
+
+#### Positive
+
+- v0.2.0 ships on schedule (Phase M week 8, against an 8–12 week
+  replan estimate).
+- No half-built fractional-α API surface for users to hit and
+  discover is broken. R-INLA users moving SPDE workflows get a clean
+  v0.2.0 with the four shipped SPDE components and a documented
+  "fractional-α: see v0.2.x roadmap" gap.
+- Surfaces the real prerequisite — the `AugmentedLatentComponent`
+  seam — as a discoverable infrastructure item rather than a
+  hidden cost inside an SPDE component PR. When the seam lands, it
+  benefits other models (sphere SPDE, multi-resolution analysis)
+  beyond fractional-α.
+- Resolves the tension between the plan's mathematical sketch and
+  the production rational-SPDE construction. Future-Phase work
+  starts from the right baseline (`rSPDE`'s state-augmentation form),
+  not from a sum-of-precisions misreading.
+
+#### Neutral
+
+- Replan scope-completion drops to 4/5 for Phase M. The remaining
+  item is the only one whose deferral does not move a flagship
+  workflow gate (the geostatistics flagship is satisfied by SPDE2 +
+  non-stationary + space-time; fractional-α is a smoothness
+  generalisation, not a workflow blocker).
+- v0.2.0's CHANGELOG and release notes will explicitly call out
+  fractional-α as out of scope; the docs landing page for SPDE will
+  link to this ADR.
+
+#### Negative
+
+- Users with α ∈ ℝ⁺ \ {1, 2} workflows must keep using R-INLA's
+  fractional-α path. The set of such users is small in practice —
+  Lindgren et al.'s default α=2 covers the published case studies
+  this project targets — but the set is not empty.
+- The `AugmentedLatentComponent` seam is now load-bearing future
+  work; if it never lands, fractional-α stays deferred indefinitely.
+  Mitigated by point 3 above: the seam has independent justification
+  (sphere SPDE, multi-resolution) and is not solely an SPDE concern.
+
+### What would unblock shipping
+
+Three items in order:
+
+1. **`AbstractObservationMapping` extension** — a `LinearCombinationMapping`
+   (or similar) subtype that applies `Σ_k w_k · A_k · x_k` to a
+   stacked latent vector `[x_1; …; x_m]`, with `apply!` /
+   `apply_adjoint!` matching the existing
+   [`observation_mapping.jl`](../packages/LatentGaussianModels.jl/src/observation_mapping.jl)
+   contract. The PR-1 KroneckerMapping is precedent for the
+   block-structured mapping pattern.
+2. **`AugmentedLatentComponent`** — a wrapper composing
+   `(component_1, …, component_m)` into a single
+   `AbstractLatentComponent` whose `length` is `Σ_k length(component_k)`,
+   `precision_matrix` is block-diagonal, and `log_hyperprior` sums
+   child priors. Distinct from `KroneckerComponent` (ADR-029): the
+   structure here is *block-diagonal* (independent fields tied at the
+   observation level), not Kronecker-product (separable joint).
+3. **`SPDEFractional` component** — given items 1 and 2, the
+   fractional-α SPDE is `AugmentedLatentComponent(SPDE1, SPDE1, …)`
+   with `m` shifted-κ child SPDEs and a `LinearCombinationMapping`
+   carrying the rational-approximation weights. The Padé/CF
+   computation of `(r_k, s_k)` is closed-form in `α` and `m`
+   (Bolin-Kirchner §3); ~50 LOC.
+
+Phase M+1 (or an interstitial v0.2.x release) is the natural home
+for items 1 and 2. Item 3 is then a single follow-up PR.
+
+### References
+
+- Bolin & Kirchner 2020, "The Rational SPDE Approach for Gaussian
+  Random Fields With General Smoothness", JCGS 29(2):274–285,
+  arXiv:1711.04333 — the rational-approximation construction; §2.3
+  gives the state-augmentation form, §3 gives the
+  Padé/contour-fraction computation of `(r_k, s_k)`.
+- [`finnlindgren/rSPDE`](https://github.com/finnlindgren/rSPDE) — the
+  production reference implementation; the augmented-state
+  formulation in [`R/operators.R`](https://github.com/finnlindgren/rSPDE/blob/main/R/operators.R)
+  is the implementation target when this ADR is unblocked.
+- [`packages/LatentGaussianModels.jl/src/components/abstract.jl`](../packages/LatentGaussianModels.jl/src/components/abstract.jl)
+  — the per-vertex contract that doesn't fit fractional-α; the seam
+  to extend.
+- ADR-017 — `AbstractObservationMapping` is the surface where the
+  `LinearCombinationMapping` will land.
+- ADR-029 — `KroneckerComponent` precedent for block-structured
+  composition; `AugmentedLatentComponent` is the block-diagonal
+  sibling.
+- ADR-027 — precedent for documenting a deferred replan item with
+  the architectural reason; the same pattern applied to PR-7(b)
+  IS-correction.
+- ADR-015 — precedent for v0.x deferral discipline; sub-packages
+  cut from v0.1 with named v0.2 promotion targets.
+- [`plans/conti-valiant-pebble.md`](conti-valiant-pebble.md) — Phase
+  M plan; PR-7 stretch criterion ("ship if PRs 1–6 close inside
+  week 8; defer to Phase M+1 if time-pressed") and the (now-known
+  incorrect) "sum of integer-α=1 SPDE precision matrices with
+  shifted κ" sketch.
+
+---
+
 ## ADR template for future entries
 
 ```

@@ -22,8 +22,10 @@ using INLASPDE
 
     @testset "M2 — SPDE2 + PC-Matérn" begin
         include("regression/test_pc_matern_prior.jl")
+        include("regression/test_gaussian_basis_prior.jl")
         include("regression/test_spde2_component.jl")
         include("regression/test_spde1d_component.jl")
+        include("regression/test_spde2_nonstationary_component.jl")
     end
 
     @testset "M3 — Mesh generation" begin

@@ -3018,6 +3018,130 @@ diagnostic. Nothing about Phase L's close changes that arithmetic.
 
 ---
 
+## ADR-028: Gaussian-basis prior on non-stationary SPDE basis coefficients — match R-INLA's `theta.prior.mean`/`theta.prior.prec` per-coefficient parameterisation; defer PC-on-basis-norm
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase M PR-3 ports `NonStationarySPDEModel` from the predecessor repo
+(`haavardhvarnes/IntegratedNestedLaplace.jl`,
+`dev/INLAModels/src/INLAModels.jl:236-378`) and lands an oracle fixture
+against R-INLA's `inla.spde2.matern` (Lindgren-Rue-Lindström 2011 §3.2).
+
+The non-stationary SPDE is parameterised by per-vertex
+`log τ_v = (B_τ θ_τ)_v` and `log κ_v = (B_κ θ_κ)_v`, where `B_τ`,
+`B_κ` are user-supplied basis matrices of shape `(n_v, p_τ)` and
+`(n_v, p_κ)`. The internal hyperparameter vector has length
+`p_τ + p_κ`. The prior on `θ = [θ_τ; θ_κ]` is the question.
+
+Three options were on the table:
+
+1. **Predecessor port — unit-Gaussian on every coefficient.**
+   `IntegratedNestedLaplace.jl` defines
+   `log_prior(NonStationarySPDEModel, θ) = -0.5 ‖θ‖²`
+   ([`INLAModels.jl:376-378`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl/blob/master/dev/INLAModels/src/INLAModels.jl#L376-L378)).
+   No per-coefficient mean/precision tuning, no R-INLA-parity
+   structure. The predecessor never validated the non-stationary fit
+   against R-INLA, so the prior was never load-bearing.
+
+2. **R-INLA `theta.prior.mean` / `theta.prior.prec` per-coefficient
+   Gaussian.** R-INLA's `inla.spde2.matern` exposes two vectors of
+   length `p_τ + p_κ`: a prior mean `μ` and a prior precision `λ`, so
+   the prior factorises as `θ_k ∼ N(μ_k, 1/λ_k)`. This is the prior
+   that R-INLA actually uses internally; matching it is the only way
+   to get parity on the LRL §3.2 fixture without adding extra free
+   parameters to the comparison.
+
+3. **PC prior on the basis-norm.** Fuglstad-Simpson-Lindgren-Rue (2019)
+   §6 sketch a PC prior penalising deviations from a stationary base
+   model via the L²-norm of `B_κ θ_κ` integrated over the mesh. This
+   is the principled long-term choice but (a) has no R-INLA
+   counterpart to validate against, (b) needs a quadrature rule and a
+   reference mesh-norm, (c) introduces a third scaling hyperparameter
+   that itself needs a prior. Out of scope for v0.2.
+
+### Decision
+
+1. **Ship `GaussianBasisPrior(mean::Vector, prec::Vector)` matching
+   R-INLA's per-coefficient Gaussian parameterisation.** The prior
+   density is
+
+   ```
+   log π(θ) = ∑_k −½ λ_k (θ_k − μ_k)² + ½ log(λ_k / 2π)
+   ```
+
+   exactly mirroring `inla.spde2.matern(theta.prior.mean = μ,
+   theta.prior.prec = λ)`. Defaults: `mean = zeros(p_τ + p_κ)` and
+   `prec = ones(p_τ + p_κ)` — R-INLA's documented defaults
+   (`theta.prior.mean = 0`, `theta.prior.prec = 1`). The prior is
+   evaluated *with* its normalising constant so that the marginal-
+   likelihood comparison against R-INLA includes the same baseline.
+
+2. **Live in `INLASPDE.jl` as a standalone struct, not as an
+   `AbstractHyperPrior` subtype.** The package's `AbstractHyperPrior`
+   contract is scalar-only (per the `priors/abstract.jl` docstring:
+   "This type is for *scalar* priors. Multi-dimensional priors […]
+   live in `INLASPDE.jl` because they are inherently coupled."). The
+   precedent is `PCMatern` in `INLASPDE.jl/src/priors/pc_matern.jl` —
+   a vector-valued prior carried as a plain struct field on the
+   component (`SPDE2{α, T, FE, G, PR}` parameterises on
+   `PR <: PCMatern`). `GaussianBasisPrior` follows the same shape:
+   `SPDE2NonStationary{α, T, FE, G, PR <: GaussianBasisPrior}`.
+
+3. **Decline the predecessor's unit-Gaussian default.** Hard-coding
+   `prec = 1` for the intercept column hard-codes the prior-belief
+   "log τ should be order-1 around zero" which is *not* a safe default
+   for arbitrary mesh scales. Exposing both `mean` and `prec` lets
+   users widen the prior on intercept columns and tighten it on
+   spline-basis columns — the canonical R-INLA usage pattern.
+
+4. **Defer PC-on-basis-norm to a follow-up component or a v0.3+
+   evolution.** No fixture, no parity benchmark; revisit if a real
+   user case appears.
+
+### Consequences
+
+#### Positive
+
+- LRL §3.2 oracle fixture compares like-for-like with R-INLA: the only
+  free axis in the fit is the actual SPDE precision construction, not
+  prior-mismatch slack.
+- The Gaussian-basis prior surface is *the* R-INLA non-stationary
+  surface — users who already drive `inla.spde2.matern` with custom
+  `theta.prior.mean`/`prec` get a one-line port.
+- Decoupling from `AbstractHyperPrior` means we don't have to pretend
+  the basis prior is `p_τ + p_κ` independent scalar priors; it stays
+  one struct with two vectors.
+
+#### Neutral
+
+- The predecessor's unit-Gaussian behavior is recoverable as
+  `GaussianBasisPrior(zeros(p), ones(p))`, which is the default.
+- One more public surface (`GaussianBasisPrior`) but it's confined to
+  `INLASPDE.jl` and only used by `SPDE2NonStationary`.
+
+#### Negative
+
+- No PC prior on the non-stationary deviation today. Users who want
+  shrinkage to stationarity must encode it via the basis structure
+  (e.g. a tight `prec` on spline-basis columns, wide on the intercept)
+  rather than through a single penalty hyperparameter.
+
+### References
+
+- Lindgren, Rue, Lindström (2011), JRSSB B 73(4), §3.2 — non-stationary
+  SPDE example with piecewise-constant `B_κ` (the oracle fixture).
+- Fuglstad, Simpson, Lindgren, Rue (2019), JASA — PC prior on Matérn,
+  §6 sketches the basis-norm PC prior (deferred).
+- R-INLA `inla.spde2.matern` source — `theta.prior.mean` /
+  `theta.prior.prec` per-coefficient Gaussian parameterisation.
+- [`INLAModels.jl:236-378`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl/blob/master/dev/INLAModels/src/INLAModels.jl#L236-L378)
+  — predecessor port source (declined unit-Gaussian default).
+
+---
+
 ## ADR template for future entries
 
 ```

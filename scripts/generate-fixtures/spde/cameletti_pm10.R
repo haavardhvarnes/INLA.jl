@@ -13,10 +13,11 @@
 # The AR1 group has *implicit* prec = 1 for identifiability against
 # the spatial precision — Julia matches via `AR1(...; fix_τ=true)`.
 #
-# This fixture uses a small synthetic dataset (8 stations × 12 time
-# points) on a unit square, so the R-INLA fit and the Julia oracle
-# both terminate inside CI budgets while still exercising the full
-# SPDE2 ⊗ AR1 surface.
+# This fixture uses a small synthetic dataset (16 stations × 16 time
+# points = 256 observations) on a unit square, so the R-INLA fit and
+# the Julia oracle both terminate inside CI budgets while still
+# exercising the full SPDE2 ⊗ AR1 surface and identifying all four
+# hyperparameters.
 #
 # Output: fixtures/spde/cameletti_pm10.json
 # (→ packages/INLASPDE.jl/test/oracle/fixtures/cameletti_pm10.jld2)
@@ -37,8 +38,15 @@ suppressPackageStartupMessages({
 set.seed(20260506)
 
 # --- domain + station/time grid --------------------------------------
-n_s   <- 8                                       # stations
-n_t   <- 12                                      # time points
+# 16 stations × 16 days = 256 observations. Smaller than the original
+# Cameletti (24 × 30 = 720) but large enough that all four
+# hyperparameters (τ_obs, range, σ, ρ_AR1) are identifiable. The
+# 8 × 12 size we tried first leaves τ_obs degenerate (the field has
+# enough degrees of freedom to absorb the noise term, and R-INLA's
+# τ_obs marginal develops a long right tail with mean ≫ mode), causing
+# spurious mean-vs-mode disagreements between engines.
+n_s   <- 16                                      # stations
+n_t   <- 16                                      # time points
 loc   <- cbind(runif(n_s, 0, 1), runif(n_s, 0, 1))
 times <- seq_len(n_t)
 
@@ -93,67 +101,34 @@ for (t in 2:n_t) {
                     sqrt(1 - rho_true^2) * u_indep[, t]
 }
 
-# Observation projector: per-time-slice spatial A. The full observation
-# matrix maps `c(u_field)` (length n_v · n_t, time-major) to long-format
-# (s, t)-indexed observations. We store the time-major A_field below.
-A_space <- inla.spde.make.A(mesh = mesh, loc = loc)        # n_s × n_v
-# Build A_field: row k = (s_k, t_k); column index = (t_k - 1) · n_v + v.
-# Time-major flattening: c(u_field) lays out u[, 1], u[, 2], ..., u[, n_t].
-A_full_rows <- vector("list", n_obs)
-for (k in seq_len(n_obs)) {
-    s <- station_id[k]
-    tt <- time_id[k]
-    row_in_space <- A_space[s, , drop = FALSE]
-    A_full_rows[[k]] <- cbind(
-        i = rep(k, length(row_in_space@x)),
-        j = (tt - 1) * n_v + (row_in_space@j + 1L),
-        v = row_in_space@x
-    )
-}
-trip <- do.call(rbind, A_full_rows)
-A_field <- sparseMatrix(i = trip[, 1], j = trip[, 2], x = trip[, 3],
-                        dims = c(n_obs, n_v * n_t))
-
-# Mean signal at each observation = (A_field) %*% c(u_field).
-u_vec <- as.numeric(u_field)         # time-major (column-stacked)
-mu    <- as.numeric(A_field %*% u_vec)
-y     <- beta_true + mu + rnorm(n_obs, sd = 1 / sqrt(tau_obs_true))
-
-# --- fit (separable space-time via control.group=list(model="ar1")) --
-# inla.spde.make.A with `group` builds the same time-blocked projector
-# we just constructed by hand. Feed it directly.
-A_inla <- inla.spde.make.A(
-    mesh  = mesh,
-    loc   = loc_long,
-    group = time_id,
+# --- observation projector + simulated y ----------------------------
+# `inla.spde.make.A(mesh, loc, group, n.group)` produces the long-format
+# n_obs × (n_v · n_t) projector with R-INLA's time-major column layout:
+# column ((t - 1) · n_v + v) is mesh-vertex `v` at time slot `t`. This
+# matches `c(u_field)` for `u_field` of shape (n_v × n_t).
+A_space <- inla.spde.make.A(mesh = mesh, loc = loc)             # n_s × n_v
+A_inla  <- inla.spde.make.A(
+    mesh    = mesh,
+    loc     = loc_long,
+    group   = time_id,
     n.group = n_t
 )
-# Sanity check: A_inla and A_field should agree (column convention is
-# the same: time-major (vertex, time) → c(u_field) layout).
-stopifnot(all(dim(A_inla) == dim(A_field)))
+stopifnot(nrow(A_inla) == n_obs, ncol(A_inla) == n_v * n_t)
+
+# Mean signal at each observation = (A_inla) %*% c(u_field).
+u_vec <- as.numeric(u_field)         # time-major (column-stacked)
+mu    <- as.numeric(A_inla %*% u_vec)
+y     <- beta_true + mu + rnorm(n_obs, sd = 1 / sqrt(tau_obs_true))
 
 field_index <- inla.spde.make.index(
-    name      = "field",
-    n.spde    = spde$n.spde,
-    n.group   = n_t
+    name    = "field",
+    n.spde  = spde$n.spde,
+    n.group = n_t
 )
 
-stk <- inla.stack(
-    data = list(y = y),
-    A = list(A_inla, 1),
-    effects = list(
-        c(field_index,
-          list(intercept = rep(1, n_obs))),
-        list()
-    ),
-    tag = "est"
-)
-# (intercept is part of `effects` block 1 above so the data layout is
-# consistent with `field_index`. The formula references `intercept`
-# explicitly.)
-
-# Need a *separate* intercept block, so re-build the stack with two
-# effects blocks the standard Cameletti way:
+# Two effects blocks the standard Cameletti way: spatial-temporal
+# field index (block 1, weighted by `A_inla`), and a stand-alone
+# intercept (block 2, weighted by 1).
 stk <- inla.stack(
     data = list(y = y),
     A = list(A_inla, 1),

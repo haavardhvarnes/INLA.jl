@@ -140,6 +140,15 @@ function convert_fixture(doc)
     if haskey(doc, "A_field")
         out["A_field"] = triplet_to_sparse(doc["A_field"])
     end
+    # Separable space-time fixtures (Cameletti) ship two extra
+    # projectors: `A_field_full` (n_obs × n_v · n_t, R-INLA's flattening)
+    # and `A_space` (n_obs × n_v, per-observation spatial projector).
+    if haskey(doc, "A_field_full")
+        out["A_field_full"] = triplet_to_sparse(doc["A_field_full"])
+    end
+    if haskey(doc, "A_space")
+        out["A_space"] = triplet_to_sparse(doc["A_space"])
+    end
     if haskey(doc, "B_tau")
         out["B_tau"] = _rows_to_matrix(doc["B_tau"])
     end

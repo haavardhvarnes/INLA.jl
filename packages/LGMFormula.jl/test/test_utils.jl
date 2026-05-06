@@ -9,6 +9,7 @@
 # directly.
 
 function _struct_isequal(a, b)
+    a === b && return true
     typeof(a) === typeof(b) || return false
     if a isa AbstractArray
         return a == b

@@ -103,10 +103,19 @@ function _check_columns(data, lhs::Symbol, covariates::AbstractVector,
     end
     for term in randoms
         col_name, _, rep, grp = _normalize_term(term)
-        col_name isa Symbol ||
-            throw(ArgumentError("@lgm: f-term column must be a Symbol, got $(typeof(col_name))"))
-        col_name in names ||
-            throw(ArgumentError("@lgm: f-term column `$(col_name)` not found in `data`. Available columns: $(names)"))
+        if col_name isa Symbol
+            col_name in names ||
+                throw(ArgumentError("@lgm: f-term column `$(col_name)` not found in `data`. Available columns: $(names)"))
+        elseif col_name isa Tuple
+            for c in col_name
+                c isa Symbol ||
+                    throw(ArgumentError("@lgm: f-term tuple-coordinate entry must be a Symbol, got $(typeof(c))"))
+                c in names ||
+                    throw(ArgumentError("@lgm: f-term tuple-coordinate column `$(c)` not found in `data`. Available columns: $(names)"))
+            end
+        else
+            throw(ArgumentError("@lgm: f-term column must be a Symbol or tuple of Symbols, got $(typeof(col_name))"))
+        end
         if rep !== nothing
             rep in names ||
                 throw(ArgumentError("@lgm: f-term `replicate = $(rep)` column not found in `data`. Available columns: $(names)"))
@@ -166,11 +175,17 @@ function _build_design_matrix(data, lhs::Symbol, has_intercept::Bool,
 
     for term in randoms
         col_name, comp_or_factory, rep_col, grp_col = _normalize_term(term)
-        col = Tables.getcolumn(cols, col_name)
-        length(col) == n_obs ||
-            throw(DimensionMismatch("@lgm: f-term column `$(col_name)` has length $(length(col)); outcome `$(lhs)` has length $(n_obs)"))
-        push!(blocks, _build_term_block(comp_or_factory, col, col_name,
-            rep_col, grp_col, cols, n_obs))
+        if col_name isa Tuple
+            rep_col === nothing && grp_col === nothing ||
+                throw(ArgumentError("@lgm: tuple-coordinate f-term `$(col_name)` cannot also have `replicate` or `group`"))
+            push!(blocks, _build_spatial_block(comp_or_factory, cols, col_name, n_obs))
+        else
+            col = Tables.getcolumn(cols, col_name)
+            length(col) == n_obs ||
+                throw(DimensionMismatch("@lgm: f-term column `$(col_name)` has length $(length(col)); outcome `$(lhs)` has length $(n_obs)"))
+            push!(blocks, _build_term_block(comp_or_factory, col, col_name,
+                rep_col, grp_col, cols, n_obs))
+        end
     end
 
     isempty(blocks) &&
@@ -359,10 +374,34 @@ function _build_components(has_intercept::Bool, n_covariates::Int,
     n_covariates > 0 &&
         push!(parts, LatentGaussianModels.FixedEffects(n_covariates))
     for term in randoms
-        _, comp_or_factory, rep, grp = _normalize_term(term)
-        push!(parts, _wrap_term(comp_or_factory, data, rep, grp))
+        col, comp_or_factory, rep, grp = _normalize_term(term)
+        if col isa Tuple
+            comp_or_factory isa LatentGaussianModels.AbstractLatentComponent ||
+                throw(ArgumentError("@lgm: f-term `$(col)`: tuple-coordinate path requires an `AbstractLatentComponent` instance, got $(typeof(comp_or_factory))"))
+            push!(parts, comp_or_factory)
+        else
+            push!(parts, _wrap_term(comp_or_factory, data, rep, grp))
+        end
     end
     isempty(parts) &&
         throw(ArgumentError("@lgm: model has no components — formula must include at least `1`, a covariate, or `f(...)`"))
     return Tuple(parts)
+end
+
+"""
+    _build_spatial_block(component, data_cols, coord_cols::Tuple, n_obs::Int)
+        -> SparseMatrixCSC{Float64, Int}
+
+Build the design-matrix block for a tuple-coordinate `f((cols...),
+component)` term. The default method throws — concrete implementations
+live in package extensions. `LGMFormulaINLASPDEExt` overloads this for
+`SPDE2` to build a barycentric `MeshProjector`.
+"""
+function _build_spatial_block(component, data_cols, coord_cols, n_obs)
+    throw(ArgumentError(
+        "@lgm: component $(typeof(component)) does not support " *
+        "tuple-coordinate `f((cols...), Component)` syntax. Spatial " *
+        "SPDE components (e.g. `SPDE2`) require `using INLASPDE` to " *
+        "load the `LGMFormulaINLASPDEExt` extension."
+    ))
 end

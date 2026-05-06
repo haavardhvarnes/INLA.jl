@@ -112,7 +112,10 @@ function _split_rhs(rhs)
     covariates = Symbol[]
     randoms = NamedTuple{
         (:col, :comp_expr, :replicate, :group),
-        Tuple{Symbol, Any, Union{Symbol, Nothing}, Union{Symbol, Nothing}},
+        Tuple{
+            Union{Symbol, Tuple{Vararg{Symbol}}}, Any,
+            Union{Symbol, Nothing}, Union{Symbol, Nothing},
+        },
     }[]
     for s in _flatten_plus(rhs)
         if s === 1
@@ -138,6 +141,11 @@ keyword arguments out of an `f(...)` call. Accepts both
 `f(col, comp; replicate=id)` (semicolon-style) and
 `f(col, comp, replicate=id)` (trailing-kw style); rejects unsupported
 keywords with a user-visible error.
+
+The first positional argument is either a bare column name (`Symbol`)
+for index-typed `f(col, Comp)` random effects, or a tuple of column
+names `(s_col, t_col)` (length 2 for spatial SPDE) or `(s_col, t_col,
+time_col)` (length 3, reserved for `KroneckerComponent` in PR-7c).
 """
 function _parse_f_term(s::Expr)
     kw_pairs = Pair{Symbol, Any}[]
@@ -155,9 +163,8 @@ function _parse_f_term(s::Expr)
     end
     length(positional) == 2 ||
         error("@lgm: malformed `f(...)` term `$s`. Expected `f(column, Component[; replicate=…, group=…])` — got $(length(positional)) positional arg(s).")
-    col, comp_expr = positional
-    col isa Symbol ||
-        error("@lgm: `f(...)`: first argument must be a column name (Symbol), got `$col`.")
+    col_expr, comp_expr = positional
+    col = _parse_f_col(col_expr, s)
     replicate = nothing
     group = nothing
     for (k, v) in kw_pairs
@@ -179,8 +186,31 @@ function _parse_f_term(s::Expr)
     end
     replicate === nothing || group === nothing ||
         error("@lgm: `f(...)`: `replicate` and `group` are mutually exclusive — got both in `$s`.")
+    if col isa Tuple
+        replicate === nothing && group === nothing ||
+            error("@lgm: `f((cols...), Component)` does not yet support `replicate` or `group` (got both in `$s`); the tuple-coordinate path is for spatial / space-time terms only.")
+    end
     return (; col = col, comp_expr = comp_expr,
         replicate = replicate, group = group)
+end
+
+function _parse_f_col(col_expr, s)
+    if col_expr isa Symbol
+        return col_expr
+    elseif col_expr isa Expr && col_expr.head === :tuple
+        cols = Symbol[]
+        for a in col_expr.args
+            a isa Symbol ||
+                error("@lgm: `f((cols...), Component)`: tuple entries must be column names (Symbol), got `$a` in `$s`.")
+            push!(cols, a)
+        end
+        n = length(cols)
+        n in (2, 3) ||
+            error("@lgm: `f((cols...), Component)`: tuple-coordinate first argument must have 2 entries (spatial, e.g. `(east, north)`) or 3 entries (space-time, e.g. `(east, north, time)`), got length $n in `$s`. 1D index-typed terms use a bare column name.")
+        return Tuple(cols)
+    else
+        error("@lgm: `f(...)`: first argument must be a column name (Symbol) or a tuple of column names `(s_col, t_col)`, got `$col_expr` in `$s`.")
+    end
 end
 
 function _record_f_kw!(kw_pairs::Vector{Pair{Symbol, Any}}, p, s)

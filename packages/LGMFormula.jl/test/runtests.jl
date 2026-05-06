@@ -15,4 +15,5 @@ include("test_utils.jl")
     include("regression/test_multi_f.jl")
     include("regression/test_multi_likelihood.jl")
     include("regression/test_replicate_group.jl")
+    include("regression/test_spatial_term.jl")
 end

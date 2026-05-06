@@ -6,14 +6,17 @@ Extends [`/CLAUDE.md`](../../CLAUDE.md). Scoped to the formula macro.
 
 This package owns:
 - The `@lgm` macro and its supporting parsing logic.
-- A `lgmformula(expr, data; kwargs...)` function that takes a
-  `StatsModels.FormulaTerm` and returns a `LatentGaussianModel`.
-- Schema handling: matching `region` in `f(region, Besag(W))` against a
-  column of a `Tables.jl`-compatible source.
+- The `lgmformula(data; lhs, intercept, covariates, randoms, family)`
+  function form the macro lowers to.
+- Schema handling: binding `region` in `f(region, Besag(W))` to a
+  column of a `Tables.jl`-compatible source via runtime helpers in
+  `schema.jl`.
+- Per-term sparse projector block construction — pure index-shuffling
+  on top of `Tables.getcolumn`; no GMRF or LGM arithmetic.
 
 Out of scope:
 - Anything numerical. This package never does arithmetic beyond what
-  `StatsModels.ModelMatrix` produces for the fixed-effects part.
+  `sparse(rows, cols, vals, m, n)` does for the design matrix.
 - Component construction. `Besag(W)` etc. are constructed by
   `LatentGaussianModels`; the macro just threads arguments through.
 
@@ -34,19 +37,26 @@ Out of scope:
 
 Core:
 - `LatentGaussianModels` — the host.
-- `StatsModels` — `@formula`, `FormulaTerm`, `apply_schema`.
+- `StatsModels` — `@formula` parsing helpers.
 - `Tables` — data-source interface.
+- `SparseArrays` (stdlib) — design-matrix construction.
 
 Nothing else without an ADR.
 
 ## Testing
 
-- `test/regression/` — `@macroexpand @lgm(...)` matches a known-good
-  `LatentGaussianModel(...)` constructor AST.
-- `test/roundtrip/` — a set of `(formula, data) → model` expansions
-  that produce models identical to their hand-written Tier-1
-  counterparts, verified by `isequal` on the struct.
-- No oracle / triangulation tier here; the parsing is deterministic.
+All tests live under `test/regression/` (parsing is deterministic, so
+no oracle / triangulation tiers):
+- `test_macroexpand.jl` — `@macroexpand @lgm(...)` matches frozen AST
+  shapes.
+- `test_roundtrip.jl` — `model == handwritten_constructor` via struct
+  equality (`_struct_isequal` helper in `test_utils.jl`).
+- `test_error_messages.jl` — malformed input errors refer to user
+  concepts.
+- `test_components.jl` — per-component coverage (PR-2).
+- `test_multi_f.jl` — multi-`f` shapes (PR-3).
+- `test_multi_likelihood.jl` — tuple-LHS multi-likelihood (PR-4).
+- `test_replicate_group.jl` — `replicate` / `group` routing (PR-5).
 
 ## Review criteria for a new macro
 

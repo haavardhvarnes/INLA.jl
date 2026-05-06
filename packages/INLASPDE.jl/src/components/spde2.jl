@@ -1,4 +1,5 @@
 """
+    SPDE2{α}(mesh::INLAMesh; pc = PCMatern())
     SPDE2{α}(points, triangles; pc = PCMatern())
 
 Integer-α SPDE–Matérn component on a 2D triangular mesh, implementing
@@ -24,22 +25,37 @@ degenerate for the PC-Matern density).
   pattern of `C`. Used for diagnostics, visualisation and compatibility
   with the LGM component machinery.
 - `pc::PCMatern` — joint PC prior on `(ρ, σ)`.
+- `mesh::Union{INLAMesh, Nothing}` — the source mesh when the
+  component was constructed via [`SPDE2(::INLAMesh; …)`](@ref);
+  `nothing` when constructed from raw `(points, triangles)`. The
+  retained mesh is what `MeshProjector(spde.mesh, locations)` and
+  the `LGMFormula` `f((east, north), spde)` extension consume.
 
 # Example
 
 ```julia
-points, triangles = ...                  # some 2D triangular mesh
-spde = SPDE2(points, triangles;
+mesh = inla_mesh_2d(loc; max_edge = 0.1)
+spde = SPDE2(mesh;
              pc = PCMatern(range_U=0.5, range_α=0.05,
                            sigma_U=1.0, sigma_α=0.01))
 Q = precision_matrix(spde, [0.0, 0.0])   # (log τ, log κ) = (0, 0)
+
+# Raw constructor — mesh field is `nothing`, projector calls then need
+# an explicit mesh argument.
+spde_raw = SPDE2(mesh.points, mesh.triangles)
 ```
 """
-struct SPDE2{α, T, FE <: FEMMatrices{T}, G <: GMRFs.AbstractGMRFGraph, PR <: PCMatern} <:
-       AbstractLatentComponent
+struct SPDE2{
+        α, T,
+        FE <: FEMMatrices{T},
+        G <: GMRFs.AbstractGMRFGraph,
+        PR <: PCMatern,
+        M
+} <: AbstractLatentComponent
     fem::FE
     graph::G
     pc::PR
+    mesh::M
 end
 
 function SPDE2(
@@ -54,7 +70,9 @@ function SPDE2(
     fem = FEMMatrices(points, triangles)
     graph = _mesh_graph_from_C(fem.C)
     T = eltype(fem.C)
-    return SPDE2{Int(α), T, typeof(fem), typeof(graph), typeof(pc)}(fem, graph, pc)
+    return SPDE2{Int(α), T, typeof(fem), typeof(graph), typeof(pc), Nothing}(
+        fem, graph, pc, nothing
+    )
 end
 
 """

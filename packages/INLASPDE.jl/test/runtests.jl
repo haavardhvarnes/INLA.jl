@@ -28,6 +28,10 @@ using INLASPDE
         include("regression/test_spde2_nonstationary_component.jl")
     end
 
+    @testset "Phase N PR-7a — SPDE2 retains INLAMesh (ADR-036)" begin
+        include("regression/test_spde2_mesh_field.jl")
+    end
+
     @testset "Safety net — Phase M PR-4 (SPDE2 triangulation)" begin
         include("regression/test_safety_net_spde.jl")
     end

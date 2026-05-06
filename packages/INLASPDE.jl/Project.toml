@@ -1,6 +1,6 @@
 name = "INLASPDE"
 uuid = "2835c710-3f40-4945-979f-d21c9e20d425"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
 
 [deps]

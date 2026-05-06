@@ -425,7 +425,21 @@ FEMMatrices(mesh::INLAMesh) = FEMMatrices(mesh.points, mesh.triangles)
 """
     SPDE2(mesh::INLAMesh; α = 2, pc = PCMatern())
 
-Assemble an [`SPDE2`](@ref) component directly on an INLA mesh.
+Assemble an [`SPDE2`](@ref) component directly on an INLA mesh and
+retain `mesh` in the component's `mesh` field. Downstream
+projector-aware code (`MeshProjector(spde.mesh, locations)`, the
+`LGMFormula` `f((east, north), spde)` extension) requires the mesh be
+captured this way; the raw `SPDE2(points, triangles; …)` constructor
+sets `mesh = nothing` for back-compat.
 """
-SPDE2(mesh::INLAMesh; α::Integer=2, pc::PCMatern=PCMatern()) = SPDE2(
-    mesh.points, mesh.triangles; α=α, pc=pc)
+function SPDE2(mesh::INLAMesh; α::Integer=2, pc::PCMatern=PCMatern())
+    α == 2 ||
+        throw(ArgumentError("SPDE2: only α = 2 is supported in v0.1; got α=$α. " *
+                            "α = 1 (ν = 0 in 2D) is invalid for the PC-Matern prior."))
+    fem = FEMMatrices(mesh)
+    graph = _mesh_graph_from_C(fem.C)
+    T = eltype(fem.C)
+    return SPDE2{Int(α), T, typeof(fem), typeof(graph), typeof(pc), typeof(mesh)}(
+        fem, graph, pc, mesh
+    )
+end

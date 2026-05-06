@@ -55,11 +55,15 @@ test/
       reversed dim order, and argument validation.
 - [x] Output raster inherits the template's lookups via
       `similar(template, Float64)`; no ad-hoc dim-order gymnastics.
-- [ ] Meuse zinc oracle test vs R-INLA's `predict.inla` — deferred
-      until a production SPDE fit is part of the test tree; the
-      non-oracle building blocks (M1 extraction + M2 projection) are
-      oracle-verified through INLASPDE.jl M5 end-to-end, and M2's
-      linear-reproduction test is the tight regression gate.
+- [x] Meuse zinc oracle test vs R-INLA's `inla.mesh.project` — landed
+      in Phase O PR-4 at
+      [`test/oracle/test_meuse_predict.jl`](../test/oracle/test_meuse_predict.jl).
+      Pixel-wise agreement against R-INLA's
+      `fmesher::fm_evaluator(mesh, loc=grid_centres)` projector to
+      1e-10 absolute tolerance (machine precision in practice — both
+      sides evaluate the same closed-form P1 barycentric formula on
+      the identical fmesher triangulation). End-to-end fit-then-project
+      assertion at the median-R-INLA-SD scale (~2.6% rms in practice).
 
 ### M3 — Uncertainty surfaces (1 week) — DONE
 

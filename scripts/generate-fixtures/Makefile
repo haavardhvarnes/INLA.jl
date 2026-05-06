@@ -17,31 +17,37 @@ CONVERT    := $(JULIA) --project=$(CURDIR) $(CURDIR)/convert_to_jld2.jl
 # -- Fixture registry ------------------------------------------------
 # Each entry: <category>/<name> => (R script, destination JLD2 path)
 
-GMRFS_FIXTURES := qinv_rw2
-LGM_FIXTURES   := scotland_bym2 pennsylvania_bym2 synthetic_nbinomial synthetic_gamma scotland_bym synthetic_disconnected_besag synthetic_generic0 synthetic_generic1 synthetic_seasonal synthetic_leroux synthetic_exponential_survival synthetic_weibull_survival synthetic_lognormal_survival synthetic_gamma_survival synthetic_coxph synthetic_joint_gauss_pois synthetic_zip1 synthetic_baghfalaki synthetic_iid2d synthetic_replicate_ar1 synthetic_beta synthetic_betabinomial synthetic_studentt synthetic_skewnormal synthetic_gev synthetic_pom synthetic_multinomial synthetic_brunei
-SPDE_FIXTURES  := fmesher_unit_square fmesher_lshape fmesher_meuse_hull meuse_spde synthetic_spde_1d lindgren_rue_lindstrom_3_2 cameletti_pm10
+GMRFS_FIXTURES   := qinv_rw2
+LGM_FIXTURES     := scotland_bym2 pennsylvania_bym2 synthetic_nbinomial synthetic_gamma scotland_bym synthetic_disconnected_besag synthetic_generic0 synthetic_generic1 synthetic_seasonal synthetic_leroux synthetic_exponential_survival synthetic_weibull_survival synthetic_lognormal_survival synthetic_gamma_survival synthetic_coxph synthetic_joint_gauss_pois synthetic_zip1 synthetic_baghfalaki synthetic_iid2d synthetic_replicate_ar1 synthetic_beta synthetic_betabinomial synthetic_studentt synthetic_skewnormal synthetic_gev synthetic_pom synthetic_multinomial synthetic_brunei
+SPDE_FIXTURES    := fmesher_unit_square fmesher_lshape fmesher_meuse_hull meuse_spde synthetic_spde_1d lindgren_rue_lindstrom_3_2 cameletti_pm10
+RASTERS_FIXTURES := meuse_spde_predict
 
-GMRFS_DEST := $(ROOT)/packages/GMRFs.jl/test/oracle/fixtures
-LGM_DEST   := $(ROOT)/packages/LatentGaussianModels.jl/test/oracle/fixtures
-SPDE_DEST  := $(ROOT)/packages/INLASPDE.jl/test/oracle/fixtures
+GMRFS_DEST   := $(ROOT)/packages/GMRFs.jl/test/oracle/fixtures
+LGM_DEST     := $(ROOT)/packages/LatentGaussianModels.jl/test/oracle/fixtures
+SPDE_DEST    := $(ROOT)/packages/INLASPDE.jl/test/oracle/fixtures
+RASTERS_DEST := $(ROOT)/packages/INLASPDERasters.jl/test/oracle/fixtures
 
-GMRFS_JSONS := $(addprefix $(JSON_DIR)/gmrfs/,$(addsuffix .json,$(GMRFS_FIXTURES)))
-LGM_JSONS   := $(addprefix $(JSON_DIR)/lgm/,$(addsuffix .json,$(LGM_FIXTURES)))
-SPDE_JSONS  := $(addprefix $(JSON_DIR)/spde/,$(addsuffix .json,$(SPDE_FIXTURES)))
+GMRFS_JSONS   := $(addprefix $(JSON_DIR)/gmrfs/,$(addsuffix .json,$(GMRFS_FIXTURES)))
+LGM_JSONS     := $(addprefix $(JSON_DIR)/lgm/,$(addsuffix .json,$(LGM_FIXTURES)))
+SPDE_JSONS    := $(addprefix $(JSON_DIR)/spde/,$(addsuffix .json,$(SPDE_FIXTURES)))
+RASTERS_JSONS := $(addprefix $(JSON_DIR)/rasters/,$(addsuffix .json,$(RASTERS_FIXTURES)))
 
-GMRFS_JLD2  := $(addprefix $(GMRFS_DEST)/,$(addsuffix .jld2,$(GMRFS_FIXTURES)))
-LGM_JLD2    := $(addprefix $(LGM_DEST)/,$(addsuffix .jld2,$(LGM_FIXTURES)))
-SPDE_JLD2   := $(addprefix $(SPDE_DEST)/,$(addsuffix .jld2,$(SPDE_FIXTURES)))
+GMRFS_JLD2    := $(addprefix $(GMRFS_DEST)/,$(addsuffix .jld2,$(GMRFS_FIXTURES)))
+LGM_JLD2      := $(addprefix $(LGM_DEST)/,$(addsuffix .jld2,$(LGM_FIXTURES)))
+SPDE_JLD2     := $(addprefix $(SPDE_DEST)/,$(addsuffix .jld2,$(SPDE_FIXTURES)))
+RASTERS_JLD2  := $(addprefix $(RASTERS_DEST)/,$(addsuffix .jld2,$(RASTERS_FIXTURES)))
 
-.PHONY: all gmrfs lgm spde clean setup
+.PHONY: all gmrfs lgm spde rasters clean setup
 
-all: gmrfs lgm spde
+all: gmrfs lgm spde rasters
 
 gmrfs: $(GMRFS_JLD2)
 
 lgm: $(LGM_JLD2)
 
 spde: $(SPDE_JLD2)
+
+rasters: $(RASTERS_JLD2)
 
 # -- Pattern rules ---------------------------------------------------
 
@@ -57,6 +63,10 @@ $(JSON_DIR)/spde/%.json: spde/%.R _helpers.R
 	@mkdir -p $(@D)
 	cd $(<D) && $(R) $(<F)
 
+$(JSON_DIR)/rasters/%.json: rasters/%.R _helpers.R
+	@mkdir -p $(@D)
+	cd $(<D) && $(R) $(<F)
+
 $(GMRFS_DEST)/%.jld2: $(JSON_DIR)/gmrfs/%.json convert_to_jld2.jl
 	@mkdir -p $(@D)
 	$(CONVERT) $< $@
@@ -66,6 +76,10 @@ $(LGM_DEST)/%.jld2: $(JSON_DIR)/lgm/%.json convert_to_jld2.jl
 	$(CONVERT) $< $@
 
 $(SPDE_DEST)/%.jld2: $(JSON_DIR)/spde/%.json convert_to_jld2.jl
+	@mkdir -p $(@D)
+	$(CONVERT) $< $@
+
+$(RASTERS_DEST)/%.jld2: $(JSON_DIR)/rasters/%.json convert_to_jld2.jl
 	@mkdir -p $(@D)
 	$(CONVERT) $< $@
 

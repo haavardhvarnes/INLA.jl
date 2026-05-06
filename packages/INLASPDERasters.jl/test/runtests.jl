@@ -31,6 +31,10 @@ using INLASPDERasters
         include("regression/test_predict_sample.jl")
     end
 
+    @testset "Phase O PR-4 — Meuse R-INLA predict oracle (1e-10 gate)" begin
+        include("oracle/test_meuse_predict.jl")
+    end
+
     @testset "Quality" begin
         include("quality/test_aqua.jl")
         include("quality/test_jet.jl")

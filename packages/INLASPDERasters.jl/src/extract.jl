@@ -2,7 +2,8 @@
     extract_at_mesh(raster::Raster, mesh::INLAMesh;
                     method::Symbol = :bilinear,
                     outside::Symbol = :error,
-                    missingval = NaN) -> Vector{Float64}
+                    missingval = NaN,
+                    mesh_crs = nothing) -> Vector{Float64}
 
 Sample `raster` at each vertex of `mesh` and return a length-`num_vertices`
 vector of values.
@@ -13,10 +14,9 @@ vector of values.
   must be defined on regular, monotonically-ordered coordinates along
   both axes (ascending or descending — both are supported).
 - `mesh::INLAMesh` — the SPDE mesh. Mesh vertex coordinates are assumed
-  to be in the same CRS as `raster`. Mesh types currently carry no CRS
-  metadata; it is the caller's responsibility to pre-project the mesh
-  if needed. When CRS-aware meshes land this function will assert
-  equality (see `CLAUDE.md`).
+  to be in the same CRS as `raster`. `INLAMesh` does not currently
+  carry CRS metadata; pass `mesh_crs` to assert against
+  `Rasters.crs(raster)` at the API boundary.
 
 # Keywords
 
@@ -27,6 +27,11 @@ vector of values.
   `:error` throws, `:missing` substitutes `missingval`.
 - `missingval = NaN` — the sentinel inserted for outside-domain
   vertices when `outside = :missing`.
+- `mesh_crs = nothing` — optional CRS assertion (ADR-041). When
+  supplied, must equal `Rasters.crs(raster)` or an `ArgumentError`
+  is raised. Default `nothing` preserves the v0.2.x "trust the
+  caller" behaviour. Reprojection is out of scope; if the CRSs
+  differ, pre-project one side before calling.
 
 # Returns
 
@@ -47,12 +52,14 @@ function extract_at_mesh(
         mesh::INLAMesh;
         method::Symbol=:bilinear,
         outside::Symbol=:error,
-        missingval::Real=NaN
+        missingval::Real=NaN,
+        mesh_crs=nothing
 )
     method ∈ (:bilinear, :nearest) ||
         throw(ArgumentError("method must be :bilinear or :nearest; got $method"))
     outside ∈ (:error, :missing) ||
         throw(ArgumentError("outside must be :error or :missing; got $outside"))
+    _check_crs(Rasters.crs(raster), mesh_crs)
 
     xs = collect(Rasters.lookup(raster, X))
     ys = collect(Rasters.lookup(raster, Y))

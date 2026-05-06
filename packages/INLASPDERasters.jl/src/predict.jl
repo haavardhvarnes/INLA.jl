@@ -155,3 +155,82 @@ function quantile_rasters(
 
     return (mean=mean_r, sd=sd_r, lower=lower_r, upper=upper_r)
 end
+
+"""
+    predict_raster(model::LatentGaussianModel, res::INLAResult,
+                   template::Raster;
+                   component,
+                   quantity::Symbol = :mean,
+                   level::Real = 0.95,
+                   outside::Symbol = :missing,
+                   missingval::Real = NaN,
+                   mesh_crs = nothing) -> Raster
+
+Project a posterior summary of an SPDE component onto a raster grid
+matching `template`. Wraps the vertex-vector
+[`predict_raster`](@ref) primitive — the user-facing entry point lifts
+the per-component slice out of [`random_effects`](@ref) and forwards
+the corresponding vector through the barycentric mesh→raster
+projector.
+
+# Arguments
+
+- `model` — a fitted `LatentGaussianModel` containing at least one
+  `SPDE2` component constructed via `SPDE2(mesh::INLAMesh; …)` (so the
+  mesh is retained per ADR-036).
+- `res` — the `INLAResult` returned by `inla(model, y; …)`.
+- `template` — a 2D `Raster` defining the target grid; the returned
+  raster shares its dims, extent, resolution, and dim order.
+
+# Keywords
+
+- `component` — selector identifying the SPDE component to project.
+  Accepts `Int` (1-based index), `String` (matching the
+  `random_effects` key, e.g. `"SPDE2[3]"`), or `Type{<:SPDE2}` (auto-
+  locates the unique SPDE2 component, errors if there are zero or
+  multiple).
+- `quantity = :mean` — which posterior summary to project: one of
+  `:mean`, `:sd`, `:lower`, `:upper`.
+- `level = 0.95` — credible level forwarded to `random_effects` for
+  `:lower` / `:upper`.
+- `outside`, `missingval` — forwarded to the vertex-vector
+  `predict_raster` form.
+- `mesh_crs = nothing` — optional CRS assertion (ADR-041). When
+  supplied, must equal `Rasters.crs(template)` or an `ArgumentError`
+  is raised. Default `nothing` preserves the v0.2.x "trust the
+  caller" behaviour.
+
+# Returns
+
+A `Raster` matching `template`'s dims with the projected per-pixel
+posterior summary.
+"""
+function predict_raster(
+        model::LatentGaussianModel,
+        res::INLAResult,
+        template::Raster;
+        component,
+        quantity::Symbol=:mean,
+        level::Real=0.95,
+        outside::Symbol=:missing,
+        missingval::Real=NaN,
+        mesh_crs=nothing
+)
+    quantity ∈ (:mean, :sd, :lower, :upper) || throw(ArgumentError(
+        "predict_raster: quantity must be one of (:mean, :sd, :lower, :upper); got $(quantity)"
+    ))
+    _check_crs(Rasters.crs(template), mesh_crs)
+
+    i, mesh = _resolve_spde_component(model, component)
+    re = random_effects(model, res; level=level)
+    name = LatentGaussianModels._component_name(model.components[i], i)
+    haskey(re, name) || throw(ArgumentError(
+        "predict_raster: component $(name) is missing from random_effects; " *
+        "this typically means the component has length 1 (e.g. Intercept). " *
+        "SPDE components are vector-valued and should always appear."
+    ))
+    nt = re[name]
+    values = getfield(nt, quantity)
+    return predict_raster(values, mesh, template;
+        outside=outside, missingval=missingval)
+end

@@ -19,6 +19,14 @@ using INLASPDERasters
         include("regression/test_quantile_rasters.jl")
     end
 
+    @testset "Phase O PR-1 — predict_raster(model, res, template)" begin
+        include("regression/test_predict_model.jl")
+    end
+
+    @testset "Phase O PR-1 — extract_at_mesh CRS handling" begin
+        include("regression/test_extract_crs.jl")
+    end
+
     @testset "Quality" begin
         include("quality/test_aqua.jl")
         include("quality/test_jet.jl")

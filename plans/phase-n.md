@@ -241,18 +241,28 @@ Macroexpand structural assertions: replicate/group slots are
 calls. Error-message tests for missing columns, both-kwargs-set,
 unsupported kwargs, non-symbol kwarg values.
 
-### PR-6 — Migration guide + vignette parity
+### PR-6 — Migration guide + vignette parity ✅ shipped 2026-05-06
 
 `docs/src/lgmformula-tutorial.md` — R-INLA → `@lgm` migration with
-side-by-side examples for the three flagship vignettes (Scotland BYM2,
-Tokyo rainfall, Meuse SPDE). Add the `@lgm` versions of these
-vignettes as a second tab in their existing pages — the explicit
-constructor stays canonical; the formula version is the migrant
-on-ramp.
+side-by-side examples for Scotland BYM2 and Tokyo rainfall plus a
+forward-looking note for Meuse SPDE (coordinate-indexed projector
+forms ship in PR-7). Each flagship vignette gained a "Same model,
+written with `@lgm`" section pointing at the migration guide; the
+Meuse vignette includes a "What about `@lgm`?" pointer to PR-7
+instead.
 
-Add `getting-started.md` callout: "Coming from R-INLA?" → links to
-`@lgm`. Update `README.md` to mention LGMFormula in the "What ships"
-list.
+`getting-started.md` gained a "Coming from R-INLA?" tip block linking
+to the migration guide. The root `README.md` now lists Phase N
+formula sugar in "What ships." `docs/make.jl` registers
+`LGMFormula.jl` (module + page entries under both top-level
+"Coming from R-INLA" and "Packages") and `docs/Project.toml` adds it
+as a path-source dep.
+
+**Skipped scope vs original plan**: a live `@example` block for the
+Meuse SPDE `@lgm` migration is not feasible in v0.2.1 because the
+macro does not yet support coordinate-indexed projectors (`f((s, t),
+SPDE2(mesh))`); that ships in PR-7. The vignette and migration guide
+both mark the syntax as a planned API.
 
 **No tests** beyond the docs build.
 

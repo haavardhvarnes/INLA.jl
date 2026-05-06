@@ -96,3 +96,21 @@ parameterisation.
 For the canonical R-INLA Tokyo dataset, the corresponding oracle
 fixture is on the v0.2 roadmap; this vignette provides the structural
 template.
+
+## Same model, written with `@lgm`
+
+The cyclic-RW2 fit translates to one [`LGMFormula.jl`](../packages/lgmformula.md)
+expression:
+
+```@example tokyo
+using LGMFormula
+
+df = (y = y, day = collect(1:n))
+model_lgm = @lgm y ~ 0 + f(day, RW2(n; cyclic = true, hyperprior = PCPrecision(1.0, 0.01))) data=df family=BinomialLikelihood(n_trials)
+nothing # hide
+```
+
+`0` (or `-1`) suppresses the intercept — same convention as R-INLA's
+`y ~ -1 + f(day, model = "rw2", cyclic = TRUE)`. The
+[migration guide](../lgmformula-tutorial.md) covers the full
+correspondence.

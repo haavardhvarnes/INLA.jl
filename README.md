@@ -103,6 +103,10 @@ Pkg.develop(url = "https://github.com/haavardhvarnes/INLA.jl",
 - **θ-integration schemes**: `Grid`, `GaussHermite`, `CCD` —
   `int_strategy = :auto` chooses CCD for dim θ > 2, Grid otherwise.
 - **Diagnostics**: DIC, WAIC, CPO, PIT.
+- **Formula sugar (Phase N)**: `LGMFormula.jl` ships a Tier-2 `@lgm`
+  macro for users coming from R-INLA's `inla(formula, …)` API —
+  source-to-source over the explicit constructor; see the
+  [migration guide](https://haavardhvarnes.github.io/INLA.jl/stable/lgmformula-tutorial/).
 
 ## Reproducing R-INLA parity
 

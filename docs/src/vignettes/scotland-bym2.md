@@ -117,3 +117,23 @@ Sørbye–Rue scaling vs R-INLA's per-component scaling
 ([Freni-Sterrantino et al. 2018](../references.md)). Asserted via
 `@test_broken` so the suite surfaces a future fix automatically;
 Pennsylvania (single component) passes within the 1% tolerance.
+
+## Same model, written with `@lgm`
+
+[`LGMFormula.jl`](../packages/lgmformula.md) supplies a Tier-2 formula
+macro that lowers to the same `LatentGaussianModel(...)` constructor.
+The Scotland BYM2 fit reads:
+
+```@example scotland
+using LGMFormula
+
+df = (cases = y, x = x, area = collect(1:n))
+model_lgm = @lgm cases ~ 1 + x + f(area, BYM2(GMRFGraph(W); hyperprior_prec = PCPrecision(1.0, 0.01))) data=df family=PoissonLikelihood(; E = E)
+nothing # hide
+```
+
+The macro is sugar — `@macroexpand @lgm(...)` shows the same
+`LatentGaussianModel(family, (Intercept(), FixedEffects(1), BYM2(...)), A)`
+constructor call we built explicitly above. The
+[migration guide](../lgmformula-tutorial.md) walks through the syntax
+in detail.

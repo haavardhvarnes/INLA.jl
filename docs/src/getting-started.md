@@ -83,3 +83,19 @@ That's the loop. Real models add covariates (`FixedEffects(X)`), swap
 diagnostics (`dic`, `waic`, `cpo`, `pit`). The
 [Scotland BYM2 vignette](vignettes/scotland-bym2.md) walks through
 that on a real dataset.
+
+!!! tip "Coming from R-INLA?"
+    The model above can also be written as a single
+    `@lgm` expression — the same constructor call, in formula
+    notation:
+
+    ```julia
+    using LGMFormula
+    df = (y = y, idx = collect(1:n))
+    model = @lgm y ~ 1 + f(idx, IID(n; hyperprior = PCPrecision(1.0, 0.01))) data=df family=PoissonLikelihood()
+    ```
+
+    The macro is sugar over the explicit constructor; it does no
+    numerical work. See the [migration guide](lgmformula-tutorial.md)
+    for the side-by-side R-INLA → `@lgm` mapping on Scotland BYM2,
+    Tokyo rainfall, and Meuse SPDE.

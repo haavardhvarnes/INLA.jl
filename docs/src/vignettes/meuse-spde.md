@@ -122,3 +122,19 @@ for the output of `inla_mesh_2d` and `MeshProjector`. The
 `fmesher_parity` test suite tracks vertex counts and minimum-angle
 bounds against R-INLA's `fmesher` outputs on the unit square,
 L-shape, and Meuse hull.
+
+## What about `@lgm`?
+
+The [`LGMFormula.jl`](../packages/lgmformula.md) macro currently
+supports random effects whose projector is a column-indexing block
+(`f(col, Component)` with `col` an integer column in
+`1:length(Component)`). SPDE models project through a mesh-barycentric
+matrix that does not fit this shape, so `@lgm` does not yet express
+the Meuse fit; the explicit constructor above is the supported
+path.
+
+Coordinate-indexed forms — `@lgm y ~ 1 + dist + f((east, north), SPDE2(mesh))` —
+are tracked as PR-7 of [Phase N](https://github.com/HaavardHvarnes/INLA.jl/blob/main/plans/phase-n.md)
+and will land as `v0.2.2`. See the
+[migration guide](../lgmformula-tutorial.md) for the planned syntax
+and the current scope of the macro.

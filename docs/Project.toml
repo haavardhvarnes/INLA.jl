@@ -5,6 +5,7 @@ GMRFs = "a8720bf5-58d3-44b3-b5a9-acd31420dc17"
 INLASPDE = "2835c710-3f40-4945-979f-d21c9e20d425"
 INLASPDERasters = "28708ac2-a765-4cf9-a54c-708b26c5e9a3"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+LGMFormula = "bd1353c5-d16b-48e9-b430-0ac24b813647"
 LatentGaussianModels = "50d8cc41-879e-4ac9-9bf2-e3c789b17716"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -15,6 +16,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 GMRFs = {path = "../packages/GMRFs.jl"}
 INLASPDE = {path = "../packages/INLASPDE.jl"}
 INLASPDERasters = {path = "../packages/INLASPDERasters.jl"}
+LGMFormula = {path = "../packages/LGMFormula.jl"}
 LatentGaussianModels = {path = "../packages/LatentGaussianModels.jl"}
 
 [compat]

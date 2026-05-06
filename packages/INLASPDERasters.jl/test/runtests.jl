@@ -35,6 +35,10 @@ using INLASPDERasters
         include("oracle/test_meuse_predict.jl")
     end
 
+    @testset "Phase O PR-5 — SPDE2NonStationary + KroneckerComponent dispatch" begin
+        include("regression/test_predict_phase_o_pr5.jl")
+    end
+
     @testset "Quality" begin
         include("quality/test_aqua.jl")
         include("quality/test_jet.jl")

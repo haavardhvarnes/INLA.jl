@@ -15,7 +15,7 @@ module INLASPDERasters
 using Random: Random
 using Statistics: Statistics
 
-using INLASPDE: INLASPDE, INLAMesh, num_vertices, SPDE2
+using INLASPDE: INLASPDE, INLAMesh, num_vertices, SPDE2, SPDE2NonStationary
 using LatentGaussianModels: LatentGaussianModels, LatentGaussianModel, INLAResult,
                             random_effects
 using Rasters: Rasters, Raster, X, Y

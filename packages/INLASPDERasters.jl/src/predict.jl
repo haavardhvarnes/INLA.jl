@@ -164,31 +164,37 @@ end
                    level::Real = 0.95,
                    outside::Symbol = :missing,
                    missingval::Real = NaN,
-                   mesh_crs = nothing) -> Raster
+                   mesh_crs = nothing,
+                   time_index = nothing) -> Raster
 
-Project a posterior summary of an SPDE component onto a raster grid
-matching `template`. Wraps the vertex-vector
+Project a posterior summary of a raster-projectable component onto a
+raster grid matching `template`. Wraps the vertex-vector
 [`predict_raster`](@ref) primitive — the user-facing entry point lifts
-the per-component slice out of `LatentGaussianModels.random_effects` and forwards
-the corresponding vector through the barycentric mesh→raster
-projector.
+the per-component slice out of `LatentGaussianModels.random_effects`
+and forwards the corresponding vector through the barycentric
+mesh→raster projector.
 
 # Arguments
 
 - `model` — a fitted `LatentGaussianModel` containing at least one
-  `SPDE2` component constructed via `SPDE2(mesh::INLAMesh; …)` (so the
-  mesh is retained per ADR-036).
+  raster-projectable spatial component: `SPDE2`,
+  `SPDE2NonStationary`, or
+  `KroneckerComponent(spatial::SPDE2-flavored, temporal)`. The spatial
+  child must be constructed via `…(mesh::INLAMesh; …)` so the mesh is
+  retained per ADR-036.
 - `res` — the `INLAResult` returned by `inla(model, y; …)`.
 - `template` — a 2D `Raster` defining the target grid; the returned
   raster shares its dims, extent, resolution, and dim order.
 
 # Keywords
 
-- `component` — selector identifying the SPDE component to project.
+- `component` — selector identifying the spatial component to project.
   Accepts `Int` (1-based index), `String` (matching the
-  `random_effects` key, e.g. `"SPDE2[3]"`), or `Type{<:SPDE2}` (auto-
-  locates the unique SPDE2 component, errors if there are zero or
-  multiple).
+  `random_effects` key, e.g. `"SPDE2[3]"`,
+  `"SPDE2NonStationary[2]"`, `"KroneckerComponent[1]"`), or
+  `Type{<:SPDE2}` / `Type{<:SPDE2NonStationary}` /
+  `Type{<:KroneckerComponent}` (auto-locates the unique component of
+  that type, errors if there are zero or multiple).
 - `quantity = :mean` — which posterior summary to project: one of
   `:mean`, `:sd`, `:lower`, `:upper`.
 - `level = 0.95` — credible level forwarded to `random_effects` for
@@ -199,6 +205,10 @@ projector.
   supplied, must equal `Rasters.crs(template)` or an `ArgumentError`
   is raised. Default `nothing` preserves the v0.2.x "trust the
   caller" behaviour.
+- `time_index = nothing` — required when `component` resolves to a
+  `KroneckerComponent`; specifies which 1-based time slot to project.
+  Must be `nothing` for stationary `SPDE2` / non-stationary
+  `SPDE2NonStationary` components.
 
 # Returns
 
@@ -214,14 +224,16 @@ function predict_raster(
         level::Real=0.95,
         outside::Symbol=:missing,
         missingval::Real=NaN,
-        mesh_crs=nothing
+        mesh_crs=nothing,
+        time_index=nothing
 )
     quantity ∈ (:mean, :sd, :lower, :upper) || throw(ArgumentError(
         "predict_raster: quantity must be one of (:mean, :sd, :lower, :upper); got $(quantity)"
     ))
     _check_crs(Rasters.crs(template), mesh_crs)
 
-    i, mesh = _resolve_spde_component(model, component)
+    i, mesh, slice = _resolve_spde_component(model, component;
+        time_index=time_index)
     re = random_effects(model, res; level=level)
     name = LatentGaussianModels._component_name(model.components[i], i)
     haskey(re, name) || throw(ArgumentError(
@@ -230,7 +242,7 @@ function predict_raster(
         "SPDE components are vector-valued and should always appear."
     ))
     nt = re[name]
-    values = getfield(nt, quantity)
+    values = getfield(nt, quantity)[slice]
     return predict_raster(values, mesh, template;
         outside=outside, missingval=missingval)
 end
@@ -277,6 +289,16 @@ Float64s; pick `n_samples` accordingly for very large rasters.
 Pass a seeded `rng` (e.g. `Xoshiro(1234)`) to obtain bit-wise
 identical rasters across calls.
 
+# KroneckerComponent space-time
+
+Like the Gaussian-approximation overload, this entry point accepts a
+`KroneckerComponent(spatial::SPDE2-flavored, temporal)` via `component`
+plus a 1-based `time_index` keyword. The slice picks the spatial vector
+at the requested time slot from each posterior draw before the
+sparse-dense GEMM, so the per-cell statistics (mean / quantile /
+exceedance) reflect the conditional posterior at that single time
+slot.
+
 See also: the `predict_raster(model, res, template; …)` overload for the
 Gaussian-approximation overload (cheaper, no sampling, but cannot
 produce exceedance rasters).
@@ -291,7 +313,8 @@ function predict_raster(
         n_samples::Integer=1000,
         outside::Symbol=:missing,
         missingval::Real=NaN,
-        mesh_crs=nothing
+        mesh_crs=nothing,
+        time_index=nothing
 )
     n_samples >= 1 ||
         throw(ArgumentError("predict_raster: n_samples must be ≥ 1; got $(n_samples)"))
@@ -300,7 +323,8 @@ function predict_raster(
     _validate_sample_quantity(quantity)
     _check_crs(Rasters.crs(template), mesh_crs)
 
-    i, mesh = _resolve_spde_component(model, component)
+    i, mesh, slice = _resolve_spde_component(model, component;
+        time_index=time_index)
 
     xs = collect(Rasters.lookup(template, X))
     ys = collect(Rasters.lookup(template, Y))
@@ -326,7 +350,7 @@ function predict_raster(
     rng_range = LatentGaussianModels.component_range(model, i)
     draws = LatentGaussianModels.posterior_sample(rng, res, model;
         n_samples=n_samples)
-    x_block = draws.x[rng_range, :]
+    x_block = draws.x[rng_range, :][slice, :]
     η_samples = P.A * x_block
     cell_values = _sample_reduce(η_samples, quantity)
 

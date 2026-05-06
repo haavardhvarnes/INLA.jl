@@ -31,6 +31,11 @@ independently across coefficients with per-coefficient `mean` and
 - `B_κ::Matrix{T}` — `(n_v, p_κ)` κ-basis matrix.
 - `prior::GaussianBasisPrior` — independent Gaussian on basis
   coefficients.
+- `mesh::Union{INLAMesh, Nothing}` — the source mesh when the
+  component was constructed via [`SPDE2NonStationary(::INLAMesh; …)`](@ref);
+  `nothing` when constructed from raw `(points, triangles)`. The
+  retained mesh is what `MeshProjector(spde.mesh, locations)` and
+  raster-side `predict_raster(model, res, template)` consume.
 
 # Stationary limit
 
@@ -61,27 +66,17 @@ spde = SPDE2NonStationary(mesh.points, mesh.triangles;
 struct SPDE2NonStationary{α, T,
         FE <: FEMMatrices{T},
         G <: GMRFs.AbstractGMRFGraph,
-        PR <: GaussianBasisPrior} <: AbstractLatentComponent
+        PR <: GaussianBasisPrior,
+        M} <: AbstractLatentComponent
     fem::FE
     graph::G
     B_τ::Matrix{T}
     B_κ::Matrix{T}
     prior::PR
+    mesh::M
 end
 
-function SPDE2NonStationary(
-        points::AbstractMatrix{<:Real},
-        triangles::AbstractMatrix{<:Integer};
-        α::Integer=2,
-        B_τ::AbstractMatrix{<:Real},
-        B_κ::AbstractMatrix{<:Real},
-        prior::Union{GaussianBasisPrior, Nothing}=nothing
-)
-    α == 2 || throw(ArgumentError(
-        "SPDE2NonStationary: only α = 2 is supported in v0.2; got α = $α. " *
-        "α = 1 and fractional α deferred."
-    ))
-    fem = FEMMatrices(points, triangles)
+function _build_spde2_nonstationary(fem, B_τ, B_κ, prior, α, mesh)
     n_v = size(fem.C, 1)
     size(B_τ, 1) == n_v || throw(ArgumentError(
         "SPDE2NonStationary: size(B_τ, 1) ($(size(B_τ, 1))) must equal " *
@@ -104,9 +99,26 @@ function SPDE2NonStationary(
 
     T = eltype(fem.C)
     graph = _mesh_graph_from_C(fem.C)
-    return SPDE2NonStationary{Int(α), T, typeof(fem), typeof(graph), typeof(pr)}(
-        fem, graph, Matrix{T}(B_τ), Matrix{T}(B_κ), pr
+    return SPDE2NonStationary{
+        Int(α), T, typeof(fem), typeof(graph), typeof(pr), typeof(mesh)}(
+        fem, graph, Matrix{T}(B_τ), Matrix{T}(B_κ), pr, mesh
     )
+end
+
+function SPDE2NonStationary(
+        points::AbstractMatrix{<:Real},
+        triangles::AbstractMatrix{<:Integer};
+        α::Integer=2,
+        B_τ::AbstractMatrix{<:Real},
+        B_κ::AbstractMatrix{<:Real},
+        prior::Union{GaussianBasisPrior, Nothing}=nothing
+)
+    α == 2 || throw(ArgumentError(
+        "SPDE2NonStationary: only α = 2 is supported in v0.2; got α = $α. " *
+        "α = 1 and fractional α deferred."
+    ))
+    fem = FEMMatrices(points, triangles)
+    return _build_spde2_nonstationary(fem, B_τ, B_κ, prior, α, nothing)
 end
 
 function SPDE2NonStationary(
@@ -116,8 +128,12 @@ function SPDE2NonStationary(
         B_κ::AbstractMatrix{<:Real},
         prior::Union{GaussianBasisPrior, Nothing}=nothing
 )
-    return SPDE2NonStationary(mesh.points, mesh.triangles;
-        α = α, B_τ = B_τ, B_κ = B_κ, prior = prior)
+    α == 2 || throw(ArgumentError(
+        "SPDE2NonStationary: only α = 2 is supported in v0.2; got α = $α. " *
+        "α = 1 and fractional α deferred."
+    ))
+    fem = FEMMatrices(mesh)
+    return _build_spde2_nonstationary(fem, B_τ, B_κ, prior, α, mesh)
 end
 
 # --- AbstractLatentComponent contract --------------------------------

@@ -417,21 +417,55 @@ against `inla.mesh.project` is the closest thing to a "byte-for-byte
 match R-INLA" assertion in the entire repo — both sides evaluate the
 same closed-form barycentric formula.
 
-### PR-5 (stretch) — Sample-based `predict_raster` for `KroneckerComponent` space-time and `SPDE2NonStationary`
+### PR-5 (stretch) — `predict_raster` for `KroneckerComponent` space-time and `SPDE2NonStationary` — DONE
 
-If PRs 1–4 close inside week 2, ship the obvious next-step:
+Shipped post-PR-4 inside the Phase O budget:
 
-- `KroneckerComponent` space-time: the SPDE block in
-  `model.latent_ranges[i]` has length `n_v · n_t`. The user-facing
-  call needs to pick a time slice (e.g. `time_index = 7`) or
-  produce a stack of time-slice rasters. Stretch goal because the
-  Cameletti vignette doesn't currently render rasters either.
-- `SPDE2NonStationary`: same projector geometry as `SPDE2`, but the
-  user-facing component-resolution helper currently rejects it.
-  Single-line dispatch addition.
+- **`SPDE2NonStationary` mesh retention.** Mirrors `SPDE2`'s ADR-036
+  pattern: a 6th type parameter `M` plus a `mesh::Union{INLAMesh,
+  Nothing}` field; the `SPDE2NonStationary(mesh::INLAMesh; …)`
+  constructor stores `mesh`, the points/triangles constructor stores
+  `nothing`. Existing parametric-type assertions (e.g. `spde isa
+  SPDE2NonStationary{2}`) keep working because they only constrain
+  the first parameter. Resolves the "single-line dispatch" claim's
+  hidden coupling — it was actually three coupled changes (struct,
+  constructor, `_resolve_spde_component`).
+- **`KroneckerComponent` time-slice dispatch.** The
+  `_resolve_spde_component` helper now returns
+  `(i, mesh, slice::AbstractRange{Int})`. For `SPDE2` /
+  `SPDE2NonStationary` the slice is `1:n_v` (identity); for
+  `KroneckerComponent(spatial::SPDE2-flavored, temporal)` the slice is
+  `time_index:n_t:n_v · n_t`, picking the spatial vector at the
+  requested time slot under `KroneckerMapping`'s time-inner-index
+  flattening (`x[(s − 1) · n_t + t]`).
+  - `predict_raster(model, res, template; component, time_index)` and
+    the sample-based `predict_raster(rng, model, res, template; …)`
+    both thread `time_index` through. KroneckerComponent paths require
+    the kwarg; non-Kronecker paths reject it with a helpful error.
+  - Auto-locate by `Type{<:KroneckerComponent}` works alongside
+    `Int` / `String` selectors.
 
-If neither lands inside Phase O's 2-week budget, both defer to a
-Phase O+1 follow-up under v0.4.0 (next minor) with a tracking issue.
+**Tests** (`test/regression/test_predict_phase_o_pr5.jl`, ~14k assertions
+into the package-wide 14849 test count):
+- SPDE2NonStationary: mesh-retention assertion, four-quantity
+  agreement against the manual vertex-vector primitive, three-form
+  component resolution (Int / String / Type), error path on
+  raw-constructor (mesh = nothing) component.
+- KroneckerComponent: time-slice agreement against
+  `predict_raster(values[k:n_t:end], mesh, template)` for all four
+  quantities × all four time slots, three-form component resolution,
+  error paths on missing/out-of-range/non-integer `time_index`,
+  `time_index` on non-Kronecker, raw-constructor spatial child,
+  non-SPDE-flavored spatial child.
+
+**Out of scope (intentionally deferred):**
+- Stack-of-time-slice raster output. Callers do this themselves via a
+  loop over `time_index`; bundling into a 3D raster would force a
+  `Rasters.RasterStack` design call orthogonal to PR-5's scope.
+- Sample-based `KroneckerComponent` Cameletti oracle. The fit-side
+  oracle from Phase M PR-5 already pins the joint posterior; the
+  raster-side projection is a linear view of the same posterior and
+  re-tested against the manual primitive.
 
 ## Test surface (Phase O close gate)
 

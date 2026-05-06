@@ -3986,6 +3986,470 @@ identical (verified against the
 
 ---
 
+## ADR-036: `SPDE2` retains `INLAMesh` so the `@lgm` extension can build a `MeshProjector` at runtime
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+Phase N PR-7 extends `@lgm` from index-column random-effect syntax
+(`f(idx, IID(n))`) to coordinate-column syntax for SPDE models
+(`f((east, north), spde)`). The macro must build a barycentric
+`MeshProjector(mesh, locations)` at runtime, where `locations` is the
+per-row `(east, north)` matrix taken from the user's data. But
+pre-PR-7a, `SPDE2` stored only the FEM matrices (`C`, `G₁`, `G₂`),
+the `GMRFGraph`, and the PC prior; the originating `INLAMesh` was
+discarded after FEM assembly. Three placement candidates for the mesh
+reference:
+
+(a) **`SPDE2` retains its `INLAMesh`.** Add a `mesh` field. The
+    upgrade path mirrors R-INLA: users call `inla_mesh_2d(loc, …)` to
+    get a mesh, pass it to `SPDE2(mesh; …)`, and `MeshProjector` calls
+    inside the `@lgm` extension read `spde.mesh` directly. Backwards
+    compatibility holds via a fallback constructor.
+
+(b) **The macro extracts the mesh from the `f(...)` AST at parse
+    time.** Pattern-match `SPDE2(mesh, …)` and emit
+    `MeshProjector($mesh, …)` directly. Brittle — only works for
+    literal `SPDE2(...)` constructor calls, breaks under aliasing
+    (`spde = SPDE2(...); @lgm ... f(coords, spde)`).
+
+(c) **A separate `LGMFormula._SpatialTerm(mesh, component)` wrapper.**
+    User writes `@lgm ... f(coords, _SpatialTerm(mesh, SPDE2(mesh, …)))`.
+    Verbose; mesh redundancy invites bugs.
+
+### Decision
+
+Adopt (a). `SPDE2` gains a type-parameterised `mesh::M` field where
+`M <: Union{INLAMesh, Nothing}`:
+
+- `SPDE2(mesh::INLAMesh; α, pc)` — primary constructor, stores the
+  mesh. Used by the `@lgm` extension; required for any code path that
+  calls `MeshProjector(spde.mesh, …)`.
+- `SPDE2(points, triangles; α, pc)` — back-compat constructor, stores
+  `mesh = nothing`. Existing v0.1.x users continue to work; only the
+  new tuple-coordinate macro form requires the mesh-bearing variant.
+
+The two-path constructor keeps every Phase M oracle fixture green
+without regenerating R-INLA references — the FEM matrices, graph, and
+PC prior are bit-identical between the two paths. The `@lgm` extension
+explicitly checks `spde.mesh isa INLAMesh` and raises a user-readable
+`ArgumentError` when the bare `(points, triangles)` constructor was
+used, pointing at the mesh-bearing constructor as the fix.
+
+### Consequences
+
+#### Positive
+
+- The `@lgm` macro never has to re-thread the mesh — the spatial
+  component carries everything its design block needs. Preserves the
+  PR-1..PR-6 invariant that the components tuple is closed under
+  composition.
+- The pattern matches R-INLA's `inla.spde2.matern(mesh, …)` API, so
+  the porting story for users is "same input, same shape."
+- A future `predict_raster(model, res, template)` overload (Phase O
+  PR-1) reads `spde.mesh` for the projector; no separate threading.
+
+#### Neutral
+
+- `SPDE2` is now type-parameterised on the mesh field
+  (`SPDE2{M, …}`); two SPDE2 instances built via the two constructors
+  are not type-equal (`SPDE2{INLAMesh, …}` vs `SPDE2{Nothing, …}`).
+  Downstream functions dispatching on `::SPDE2` continue to work
+  because the parameter is unconstrained at the dispatch site.
+- The umbrella `INLA.jl` and `INLASPDERasters.jl` widen their
+  `INLASPDE` compat to `"0.2, 0.3"` to accept the field-set change.
+
+#### Negative
+
+- An additive field is, formally, a contract change in `INLASPDE.jl`
+  — bumped 0.2.0 → 0.3.0. Code paths that compare `SPDE2` structs by
+  field set (oracle fixture round-trip, predecessor-port material in
+  `dev/INLAModels/`) had to be audited. The audit found one site
+  (oracle fixture replay) which already uses `_struct_isequal`-style
+  comparisons that ignore the new field if it's `nothing`.
+
+### References
+
+- [`packages/INLASPDE.jl/src/components/spde2.jl`](packages/INLASPDE.jl/src/components/spde2.jl)
+  — `SPDE2` struct and the two constructor paths.
+- [`packages/INLASPDE.jl/src/projector.jl`](packages/INLASPDE.jl/src/projector.jl)
+  — `MeshProjector(mesh, locations)`, the consumer of `spde.mesh`.
+- [`packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl`](packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl)
+  — extension that calls `MeshProjector(spde.mesh, …)`.
+- ADR-008 — `LGMFormula.jl` as a separate package; the SPDE bridge
+  must layer through the LGM core's existing component contract.
+- [`plans/phase-n-pr7.md`](plans/phase-n-pr7.md) — PR-7 subplan
+  motivating this ADR.
+
+---
+
+## ADR-037: `@lgm` accepts tuple-coordinate first arg in `f(...)`; arity ∈ {2, 3} only
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+Phase N PR-7b extends the `@lgm` parser to accept `f((east, north), spde)`
+and (PR-7c) `f((east, north, time), KroneckerComponent(...))`. Two
+parser-level questions:
+
+1. **What does the tuple mean for non-SPDE components?** A 2-tuple has
+   no meaning for `IID(n)` or `AR1(n)` — those components index by a
+   single column. The parser does not know component types at parse
+   time (component arguments are unevaluated AST). Compromise: accept
+   tuple-shape syntax at parse time, defer the type-fit check
+   ("component must accept coordinate columns") to the schema-side
+   runtime helper.
+
+2. **Tuple arity bounds.** R-INLA's SPDE always uses 2D coordinates;
+   3D SPDE is out of scope (deferred to v0.3+ per
+   `packages/INLASPDE.jl/plans/plan.md`). 1D SPDE uses a single
+   coordinate column — `f(t, SPDE1D(mesh))` already works under the
+   pre-PR-7 parser since `t` is a `Symbol`, not a tuple. So PR-7
+   needs to accept 2-tuples (spatial-only) and 3-tuples (space-time
+   via `KroneckerComponent`, ADR-038).
+
+### Decision
+
+Accept `Expr(:tuple, args...)` as the first positional argument of
+`f(...)` only when `length(args) ∈ {2, 3}`. Reject other arities at
+parse time with a user-readable error:
+
+- `length == 1` (e.g. `f((s,), spde)`) — point at the bare-symbol
+  form `f(s, spde)`.
+- `length ≥ 4` — point at "3D SPDE is out of scope; use 2D
+  spatial-only or `(east, north, time)` space-time."
+
+All tuple entries must be `Symbol`s. Non-Symbol entries (e.g.
+`f((east, 3.14), spde)`) raise an `ArgumentError` with the offending
+position.
+
+The component-type fit check ("`IID(n)` does not accept coordinate
+columns") happens at the schema-side runtime helper
+`_build_spatial_block(component, data, coord_cols, n_obs)`. The
+default fallback throws `ArgumentError("@lgm: component
+$(typeof(comp)) does not accept coordinate columns; install
+INLASPDE.jl and load it for SPDE support")`. Concrete overloads for
+`SPDE2` and `KroneckerComponent` ship in the
+`LGMFormulaINLASPDEExt` weakdep extension (ADR-039).
+
+`replicate` / `group` keyword routing (ADR-035) is **rejected** on
+tuple-coord terms — the mesh-barycentric block does not compose
+cleanly with R or per-group panel stacking. Surfaces as a
+parse-time error.
+
+### Consequences
+
+#### Positive
+
+- `@lgm` reaches the second flagship R-INLA workflow (geostatistics)
+  using the same surface as R-INLA: `f((east, north), spde)` mirrors
+  `f(s, model = "spde")` plus a coord-pair convention. The Meuse
+  vignette can now express its model in `@lgm` form.
+- Parse-time arity bounds catch 90% of typos before they reach the
+  schema-binding stage; the remaining 10% (component type mismatch)
+  surfaces with a user-readable error from
+  `_build_spatial_block`.
+- The bare-symbol form `f(idx, comp)` is unchanged — the tuple
+  branch is purely additive in the parser.
+
+#### Neutral
+
+- The "first positional arg of `f(...)` is a Symbol" invariant from
+  PR-1..PR-6 is relaxed to "Symbol or 2/3-tuple of Symbols." The
+  PR-7b/c macroexpand structural tests assert the relaxed
+  invariant directly.
+- 1D SPDE (`SPDE1D`) uses bare-Symbol `f(t, spde1d)` — no tuple
+  needed since 1D coordinates are a single column. This asymmetry
+  is documented in `LGMFormula`'s docstrings.
+
+#### Negative
+
+- A future 3D SPDE (deferred to v0.3+) will need to relax the
+  `length ≥ 4` reject branch. When 3D lands, the relaxation is
+  parser-local: change the upper bound and add a 4-tuple test case.
+  Forward-compat path is clear.
+
+### References
+
+- [`packages/LGMFormula.jl/src/parse.jl`](packages/LGMFormula.jl/src/parse.jl)
+  — `_parse_f_term` extension to accept tuple-shape first arg.
+- [`packages/LGMFormula.jl/src/schema.jl`](packages/LGMFormula.jl/src/schema.jl)
+  — `_build_spatial_block` default fallback.
+- [`packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl`](packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl)
+  — concrete overloads for `SPDE2` and `KroneckerComponent`.
+- ADR-035 — `replicate` / `group` runtime-wrap routing; this ADR
+  excludes that routing on tuple-coord terms.
+- ADR-038 — 3-tuple form for `KroneckerComponent` space-time.
+- ADR-039 — weakdep extension that hosts the SPDE-aware overloads.
+
+---
+
+## ADR-038: `KroneckerComponent` space-time `@lgm` form takes a 3-tuple coordinate; design block is a sparse Khatri-Rao matrix
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+PR-7c closes the Cameletti-style separable space-time SPDE entry
+point in `@lgm`. R-INLA writes this as
+`f(s, model = "spde", group = t, control.group = list(model = "ar1"))`.
+PR-5 already routes `f(t, AR1; group = grp_col)` to a runtime
+`Group(AR1, data.grp_col)` — which is **not** the same as Kronecker
+(Group is one inner component per group label with block-diagonal
+flattening; Kronecker is `Q_s ⊗ Q_t`). Three candidates for the
+`@lgm` surface:
+
+(a) **Explicit `KroneckerComponent` second arg, 2-tuple coord.** User
+    writes `f((east, north), KroneckerComponent(SPDE2(mesh), AR1(T)))`.
+    Time column has nowhere to live — `KroneckerComponent` needs
+    *three* columns: two spatial coords + one time index. Doesn't fit.
+
+(b) **3-tuple coord.** User writes
+    `f((east, north, time), KroneckerComponent(SPDE2(mesh), AR1(T)))`.
+    Parser accepts 3-tuple when the component is
+    `KroneckerComponent`. First two are mesh coordinates; third is
+    the time index. Mirrors the Cameletti fixture's natural data
+    layout.
+
+(c) **R-INLA-style `group = time` + auto-Kronecker.** User writes
+    `f((east, north), SPDE2(mesh); group = time)` and the macro
+    auto-wraps as `KroneckerComponent(SPDE2(...), AR1(T))`. Hidden
+    behavior — picks the time model and inherits R-INLA's
+    `control.group` ambiguity.
+
+The second design question is **how the design block is laid out**.
+The plan body called for emitting `KroneckerMapping(A_space, A_time)`
+directly, with mixed-RHS via `StackedMapping`. That assertion turned
+out to be mis-typed: `KroneckerMapping` is matrix-Kron with
+`nrows = nrows(A_space) · nrows(A_time)`, so feeding both factors at
+`n_obs` rows would yield `n_obs²` observation rows. `StackedMapping`
+is row-stacked (multi-likelihood), not column-stacked. Neither fits
+the per-obs `(east, north, time)` data shape.
+
+### Decision
+
+Adopt (b) — 3-tuple coord with explicit `KroneckerComponent` second
+arg.
+
+The schema-side runtime helper
+`_build_spatial_block(c::KroneckerComponent, data, (east, north, time), n_obs)`
+builds a **sparse Khatri-Rao (row-product) design matrix**, not a
+`KroneckerMapping`:
+
+```
+A_st[i, (s - 1) · n_t + t] = A_space[i, s]   when t == time_idx[i]
+                           = 0               otherwise
+```
+
+The column layout `(s − 1) · n_t + t` matches `KroneckerComponent`'s
+`vec(X)` flattening (`X` of shape `n_t × n_s`) and the existing
+`KroneckerMapping`'s flattening convention used by the
+`cameletti_pm10` oracle. For gridded data where every spatial location
+is observed at every time slot, this Khatri-Rao construction reduces
+exactly to `kron(A_space_j, I_{n_t})` — the form the oracle uses.
+
+Implementation lives in the `LGMFormulaINLASPDEExt` weakdep extension
+(ADR-039). Three dispatches:
+
+- `_build_spatial_block(::KroneckerComponent, …, NTuple{3, Symbol}, …)`
+  — main path; validates `c.space isa SPDE2` and `c.space.mesh isa
+  INLAMesh`, builds `MeshProjector`, remaps columns via `findnz`.
+- `_build_spatial_block(::SPDE2, …, NTuple{3, Symbol}, …)` — points
+  at the `KroneckerComponent` wrapper.
+- `_build_spatial_block(::KroneckerComponent, …, NTuple{2, Symbol}, …)`
+  — points at the 3-tuple form.
+
+Defer (c) (`group = time` syntax sugar) to a follow-up if user demand
+surfaces. The 3-tuple form is the most explicit and least surprising,
+and the parse-time arity check from ADR-037 generalises cleanly.
+
+### Consequences
+
+#### Positive
+
+- The Cameletti et al. (2013) PM₁₀ space-time SPDE — the second
+  flagship space-time fixture — is expressible in `@lgm` form. The
+  Cameletti vignette can match the Scotland / Tokyo `@lgm`-driven
+  treatment.
+- Khatri-Rao construction is the correct general-purpose form for
+  arbitrary per-obs `(east, north, time)` data; the gridded
+  Cameletti special case (`kron(A_space_j, I_{n_t})`) drops out
+  automatically.
+- Time-coord validation (out-of-range, non-integer) lives in the
+  extension and surfaces user-readable errors at the macro-call
+  site.
+
+#### Neutral
+
+- 3-tuple coord is reserved for `KroneckerComponent`; using it with
+  a bare `SPDE2` (`f((east, north, time), spde)`) raises an error
+  pointing at the wrapper. Documented in `LGMFormula`'s parse-error
+  message.
+- The decision to use Khatri-Rao instead of `KroneckerMapping`
+  deviates from `plans/phase-n-pr7.md` PR-7c §, which conjectured
+  `KroneckerMapping` direct emit. The deviation is documented in
+  the PR-7c commit message and the `LGMFormulaINLASPDEExt`
+  source-file comments.
+
+#### Negative
+
+- The `KroneckerMapping` mapping type still has no `@lgm` consumer
+  — it's used internally by the LGM core's space-time machinery but
+  the macro lowers to a `LinearProjector(A::SparseMatrixCSC)` even
+  for Kronecker-shaped designs. Forward path: when an `@lgm`
+  consumer needs the matrix-Kron form (e.g. tensor-grid
+  observations like climate-model output where `n_obs` *is*
+  `n_s · n_t`), add a `KroneckerMapping`-emitting branch. Not in
+  scope for v0.2.x.
+
+### References
+
+- [`packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl`](packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl)
+  — Khatri-Rao construction at the `_build_spatial_block` overload
+  for `KroneckerComponent`.
+- [`packages/LatentGaussianModels.jl/src/components/kronecker.jl`](packages/LatentGaussianModels.jl/src/components/kronecker.jl)
+  — `KroneckerComponent` and the `vec(X)` flattening convention.
+- [`packages/LatentGaussianModels.jl/src/observation_mapping.jl`](packages/LatentGaussianModels.jl/src/observation_mapping.jl)
+  — `KroneckerMapping`, the matrix-Kron form not emitted by `@lgm`.
+- [`packages/INLASPDE.jl/test/oracle/test_cameletti_pm10.jl`](packages/INLASPDE.jl/test/oracle/test_cameletti_pm10.jl)
+  — gridded `kron(A_space_j, I_{n_t})` oracle that this ADR's
+  Khatri-Rao form recovers as a special case.
+- ADR-029 — generic `KroneckerComponent` two-component composer.
+- ADR-037 — tuple-coord parser semantics; this ADR extends to 3-tuple.
+- ADR-039 — weakdep extension hosts the `KroneckerComponent` overload.
+
+---
+
+## ADR-039: `LGMFormula` ↔ `INLASPDE` integration ships as a Julia 1.9 weakdep extension, not a hard dep or duck-typed hook
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+The mesh-barycentric runtime helper from PR-7b/PR-7c (ADR-037, ADR-038)
+needs to live somewhere in the package graph. The function is owned
+by `LGMFormula` (it's the schema-side dispatch surface) but its
+implementation needs `INLASPDE` types (`SPDE2`, `INLAMesh`,
+`MeshProjector`) and `LatentGaussianModels` types
+(`KroneckerComponent`). Three placements:
+
+(a) **`LGMFormula` hard-deps `INLASPDE`.** Simplest, but pulls the
+    SPDE FEM stack (DelaunayTriangulation, Meshes, CoordRefSystems,
+    SciMLOperators) into every `using LGMFormula` import — wrong
+    layering for users who only need `@lgm` for non-spatial models
+    (Scotland BYM2, Tokyo seasonal AR1).
+
+(b) **`LGMFormula` weakdeps `INLASPDE` via a Julia 1.9 extension.**
+    `LGMFormulaINLASPDEExt` adds the spatial-projector helper when
+    the user has `using INLASPDE` (or its dependants) loaded.
+    Macros from `LGMFormula` cannot export new symbols from
+    extensions, but the extension can attach methods to existing
+    `LGMFormula` functions.
+
+(c) **`INLASPDE` adds a hook the macro calls via duck typing.**
+    Define a method
+    `LGMFormula._build_spatial_block(c::AbstractLatentComponent, data, cols)`
+    that throws by default, and `INLASPDE` overloads it for `SPDE2`.
+    Same effect as (b) but the bookkeeping is on the `INLASPDE`
+    side — `INLASPDE` would import `LGMFormula` to attach methods,
+    inverting the natural dependency direction.
+
+### Decision
+
+Adopt (b). `LGMFormula.jl`'s `Project.toml` declares:
+
+```toml
+[weakdeps]
+INLASPDE = "2835c710-3f40-4945-979f-d21c9e20d425"
+
+[extensions]
+LGMFormulaINLASPDEExt = "INLASPDE"
+
+[sources]
+INLASPDE = {path = "../INLASPDE.jl"}
+```
+
+The `[sources]` block enables the Julia 1.11+ test-sandbox path
+resolution so `Pkg.test()` finds the local dev `INLASPDE@0.3.0` —
+matches the same pattern in `docs/Project.toml` and other extensions
+in the ecosystem (ADR-008).
+
+The extension `LGMFormulaINLASPDEExt`:
+
+- Imports `INLASPDE.SPDE2`, `INLASPDE.MeshProjector`,
+  `INLASPDE.INLAMesh`, and `LatentGaussianModels.KroneckerComponent`.
+- Attaches concrete methods to `LGMFormula._build_spatial_block`
+  (the unexported function defined in `LGMFormula`'s core, ADR-037).
+- Attaches mis-pair error overloads (SPDE2 + 3-tuple,
+  KroneckerComponent + 2-tuple) so the user gets a precise pointer
+  to the right shape rather than a generic `MethodError`.
+
+### Consequences
+
+#### Positive
+
+- Users who only need `@lgm` for non-spatial models incur zero cost
+  from the SPDE stack — `using LGMFormula` does not load
+  `INLASPDE`. The Phase L migration story for Scotland / Germany /
+  Tokyo (`@lgm` for areal and time-series models) ships clean.
+- The extension activates automatically when both packages are
+  loaded (e.g. `using INLA` re-exports both, so `@lgm` "just works"
+  for SPDE the moment `using INLA` runs).
+- The extension-method pattern mirrors `INLASPDEMakieExt`,
+  `LatentGaussianModelsTuringExt`, and other ecosystem extensions —
+  one consistent layering across the repo.
+- The hook function (`_build_spatial_block`) is part of
+  `LGMFormula`'s public API even though unexported; its docstring is
+  the formal contract for "what does it mean for a component to
+  accept coordinate columns?"
+
+#### Neutral
+
+- Extension methods are not visible to `@code_warntype` until the
+  extension is loaded; users debugging an `@lgm`-driven SPDE model
+  must have `using INLASPDE` (or `using INLA`) before
+  `@code_warntype` reports types correctly.
+- Julia 1.9 extensions cannot export new symbols. Any future
+  `LGMFormula`-side public name needed by SPDE-only callers
+  (currently none) would require adding it to `LGMFormula`'s core.
+
+#### Negative
+
+- Bumps `LGMFormula.jl` 0.2.0 → 0.3.0 (extension target addition).
+  PR-7c further bumps 0.3.0 → 0.4.0 (mapping-shape change in
+  `KroneckerComponent` overload). The minor bumps are conservative
+  but accurate — the public schema function
+  `_build_spatial_block` is new in 0.3.0.
+- Test-time setup is slightly more involved than a hard dep: the
+  test target declares `INLASPDE` in `[extras]` and lists it in the
+  `test` target so the extension activates inside `Pkg.test()`.
+  Documented in `LGMFormula.jl/Project.toml`.
+
+### References
+
+- [`packages/LGMFormula.jl/Project.toml`](packages/LGMFormula.jl/Project.toml)
+  — `[weakdeps]`, `[extensions]`, `[sources]`, and test-extras
+  declarations.
+- [`packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl`](packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl)
+  — extension module, all SPDE-aware `_build_spatial_block` methods.
+- [`packages/LGMFormula.jl/src/schema.jl`](packages/LGMFormula.jl/src/schema.jl)
+  — the unexported `_build_spatial_block` function the extension
+  attaches methods to.
+- ADR-008 — `LGMFormula.jl` as a separate package; the layering
+  intent that this ADR realises.
+- ADR-036 — `SPDE2` mesh field that the extension reads.
+- ADR-037 — tuple-coord parser semantics that the extension serves.
+- ADR-038 — 3-tuple `KroneckerComponent` route the extension hosts.
+- [`plans/dependencies.md`](plans/dependencies.md) — weakdep policy.
+
+---
+
 ## ADR template for future entries
 
 ```

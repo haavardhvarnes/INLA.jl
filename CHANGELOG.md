@@ -4,6 +4,110 @@ All notable changes to this repository are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.2] — 2026-05-06
+
+Phase N closes the LGMFormula maturity arc. PR-1..PR-6 (closed
+2026-04-29 → 2026-05-05) shipped `@lgm` macro + `lgmformula` function
+form parity, multi-`f` roundtrip, multi-likelihood tuple-LHS,
+`replicate` / `group` term routing (ADR-035), and migration-guide
+parity for Scotland and Tokyo. PR-7 (closed 2026-05-06) is the Phase N
+stretch item: SPDE-friendly coordinate-tuple syntax that closes the
+last `@lgm` gap from Phase N's original scope — geostatistics. This
+release covers the full Phase N arc from `v0.2.0`.
+
+Tagged retroactively on `cbfae1e` (PR-7c). Bumps:
+`INLASPDE.jl` 0.2.0 → 0.3.0 (PR-7a `SPDE2.mesh` field), `LGMFormula.jl`
+0.2.0 → 0.4.0 (PR-7b extension target + PR-7c mapping shape).
+`LatentGaussianModels.jl` and `INLASPDERasters.jl` unchanged.
+
+Four new ADRs land in [`plans/decisions.md`](plans/decisions.md):
+ADR-036 (`SPDE2.mesh` retention), ADR-037 (tuple-coord parser
+semantics), ADR-038 (3-tuple `KroneckerComponent` form + Khatri-Rao
+design block), ADR-039 (`LGMFormula` ↔ `INLASPDE` weakdep extension
+boundary).
+
+### Added
+
+**Phase N — LGMFormula maturity (`@lgm` reaches geostatistics flagship)**
+
+- **`@lgm` macro + `lgmformula` function form** (PR-1..PR-2,
+  ADR-008) — R-INLA-style formula syntax over the LGM core's
+  Tier-1 constructors. Macro is pure source-to-source (no runtime
+  data baked into AST per `plans/macro-policy.md`); function form
+  serves the same surface for non-macro callers. Component coverage
+  roundtrip tests (PR-2): `Intercept`, `IID`, `RW1`, `AR1`, `Besag`,
+  `BYM2`, `Linear`, `Group`, `Replicate`, `Copy`, `MEB`, `MEC`,
+  `Categorical`. Implementation:
+  [`packages/LGMFormula.jl/src/`](packages/LGMFormula.jl/src/) —
+  `parse.jl`, `schema.jl`, `expand.jl`, `lgmformula.jl`.
+- **Multi-`f` roundtrip + tuple-LHS multi-likelihood** (PR-3, PR-4) —
+  `@lgm y ~ 1 + f(t1, AR1(n1)) + f(t2, AR1(n2)) data=df` composes
+  multiple random-effect terms; tuple-LHS `(y1, y2) ~ ... ; family =
+  (Gaussian(), Poisson())` ships multi-likelihood support via
+  `MultiLikelihood` + `StackedMapping`.
+- **`replicate` / `group` term keywords** (PR-5, ADR-035) — the AST
+  emits `LGMFormula._wrap_term(comp, data, replicate_col, group_col)`
+  runtime calls so `data`-bound `Replicate(comp, R)` and `Group(factory,
+  group_id)` wraps stay data-free at expansion time. Panel-stacking
+  layout matches R-INLA bit-for-bit (verified against the
+  `synthetic_replicate_ar1` Phase I-C oracle).
+- **Migration guide + Scotland / Tokyo vignette parity** (PR-6) —
+  [`docs/src/lgmformula-tutorial.md`](docs/src/lgmformula-tutorial.md)
+  ships side-by-side R-INLA / `@lgm` examples; Scotland BYM2 and
+  Tokyo seasonal AR1 vignettes gain "Same model, written with
+  `@lgm`" `@example` blocks.
+
+**Phase N PR-7 — SPDE-friendly coordinate forms**
+
+- **`SPDE2` retains `INLAMesh`** (PR-7a, ADR-036) — additive
+  type-parameterised `mesh::M` field where `M <: Union{INLAMesh,
+  Nothing}`. Two constructors: `SPDE2(mesh::INLAMesh; α, pc)`
+  (mesh-bearing, primary) and `SPDE2(points, triangles; α, pc)`
+  (back-compat, `mesh = nothing`). Bumps `INLASPDE.jl` 0.2.0 → 0.3.0;
+  every Phase M oracle fixture round-trips unchanged.
+- **`@lgm` tuple-coordinate parser** (PR-7b, ADR-037, ADR-039) —
+  `f((east, north), spde::SPDE2)` lowers to a barycentric
+  `MeshProjector(spde.mesh, [east north])` design block. Parser
+  accepts 2-tuples (spatial-only) and 3-tuples (space-time, ADR-038).
+  The mesh-bridge ships in the new
+  [`LGMFormulaINLASPDEExt`](packages/LGMFormula.jl/ext/LGMFormulaINLASPDEExt.jl)
+  weakdep extension; the schema-side hook
+  `LGMFormula._build_spatial_block(component, data, coord_cols, n_obs)`
+  is the formal contract for "what does it mean for a component to
+  accept coordinate columns?" Bumps `LGMFormula.jl` 0.2.0 → 0.3.0
+  (extension target + new public schema function).
+- **`@lgm` 3-tuple `KroneckerComponent` form** (PR-7c, ADR-038) —
+  `f((east, north, time), KroneckerComponent(SPDE2(mesh), AR1(T)))`
+  lowers to a sparse Khatri-Rao (row-product) design matrix with
+  column layout `(s − 1) · n_t + t`, matching `KroneckerComponent`'s
+  `vec(X)` flattening. The Cameletti-shape gridded case (every
+  spatial location observed at every time slot) reduces exactly to
+  the canonical `kron(A_space_j, I_{n_t})` form used by the
+  `cameletti_pm10` oracle. Bumps `LGMFormula.jl` 0.3.0 → 0.4.0
+  (mapping-shape change). Deviates from `plans/phase-n-pr7.md`
+  PR-7c § (which conjectured `KroneckerMapping` direct emit, mis-typed
+  for arbitrary per-obs data); deviation documented in commit
+  message and source comments.
+
+### Changed
+
+- `INLASPDE.jl` 0.2.0 → 0.3.0 (additive `SPDE2.mesh` field).
+- `LGMFormula.jl` 0.2.0 → 0.4.0 (PR-7b 0.2 → 0.3, PR-7c 0.3 → 0.4).
+- `INLA.jl` and `INLASPDERasters.jl` widen `INLASPDE` compat to
+  `"0.2, 0.3"`.
+
+### Notes
+
+- Tag `v0.2.2` is retroactive on commit `cbfae1e` (Phase N PR-7c
+  close). The umbrella `INLA.jl` Project.toml version-string was not
+  bumped at the time and remains `"0.2.0"` at the tag commit; the
+  tag-level Phase N close is documented here rather than in a
+  release-commit version bump. Future tags resume the standard
+  release-commit pattern.
+- v0.2.1 was reserved for a hypothetical PR-1..PR-6-only close (per
+  `plans/phase-n-pr7.md`) but was never tagged; the full Phase N arc
+  closes at v0.2.2 in a single tag.
+
 ## [v0.2.0] — 2026-05-05
 
 Phase M closes the SPDE-expansion arc — the second flagship R-INLA

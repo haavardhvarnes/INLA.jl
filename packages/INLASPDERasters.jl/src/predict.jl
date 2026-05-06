@@ -234,3 +234,131 @@ function predict_raster(
     return predict_raster(values, mesh, template;
         outside=outside, missingval=missingval)
 end
+
+"""
+    predict_raster(rng::AbstractRNG, model::LatentGaussianModel,
+                   res::INLAResult, template::Raster;
+                   component, quantity,
+                   n_samples::Integer = 1000,
+                   outside::Symbol = :missing,
+                   missingval::Real = NaN,
+                   mesh_crs = nothing) -> Raster
+
+Sample-based projection of an SPDE component onto a raster grid. Draws
+`n_samples` joint posterior samples via [`posterior_sample`](@ref),
+slices the SPDE block out of each draw, projects all draws through the
+barycentric mesh→raster projector in a single sparse-dense GEMM, then
+reduces the resulting `n_cells × n_samples` matrix column-wise per
+`quantity`.
+
+# Quantity dispatch
+
+- `quantity = :mean` — per-cell posterior mean. Asymptotically agrees
+  with the Gaussian-approximation `predict_raster(model, res, template;
+  quantity = :mean)` overload up to MC error.
+- `quantity isa Real` with `0 ≤ quantity ≤ 1` — per-cell empirical
+  quantile (`Statistics.quantile`). E.g. `quantity = 0.5` is the
+  posterior median; `quantity = 0.025` / `0.975` are the 95% credible
+  bounds.
+- `quantity isa Exceedance(c)` — per-cell exceedance probability
+  `P(u(s) > c | y) ≈ mean(η_samples .> c, dims = 2)`. The honest path
+  for tail probabilities; cannot be derived from Gaussian-approximation
+  summaries.
+
+# Performance
+
+`P.A * x_samples[spde_range, :]` is one sparse-dense GEMM yielding the
+full `n_cells × n_samples` projected block. All reductions are
+column-wise scans of this block. Memory cost is `n_cells × n_samples`
+Float64s; pick `n_samples` accordingly for very large rasters.
+
+# Reproducibility
+
+Pass a seeded `rng` (e.g. `Xoshiro(1234)`) to obtain bit-wise
+identical rasters across calls.
+
+See also: [`predict_raster(model, res, template; ...)`](@ref) for the
+Gaussian-approximation overload (cheaper, no sampling, but cannot
+produce exceedance rasters).
+"""
+function predict_raster(
+        rng::Random.AbstractRNG,
+        model::LatentGaussianModel,
+        res::INLAResult,
+        template::Raster;
+        component,
+        quantity,
+        n_samples::Integer=1000,
+        outside::Symbol=:missing,
+        missingval::Real=NaN,
+        mesh_crs=nothing
+)
+    n_samples >= 1 ||
+        throw(ArgumentError("predict_raster: n_samples must be ≥ 1; got $(n_samples)"))
+    outside ∈ (:error, :missing) ||
+        throw(ArgumentError("predict_raster: outside must be :error or :missing; got $(outside)"))
+    _validate_sample_quantity(quantity)
+    _check_crs(Rasters.crs(template), mesh_crs)
+
+    i, mesh = _resolve_spde_component(model, component)
+
+    xs = collect(Rasters.lookup(template, X))
+    ys = collect(Rasters.lookup(template, Y))
+    nx = length(xs)
+    ny = length(ys)
+    n_cells = nx * ny
+
+    locs = Matrix{Float64}(undef, n_cells, 2)
+    cell_ij = Vector{Tuple{Int, Int}}(undef, n_cells)
+    k = 0
+    for j in 1:ny
+        for ii in 1:nx
+            k += 1
+            locs[k, 1] = xs[ii]
+            locs[k, 2] = ys[j]
+            cell_ij[k] = (ii, j)
+        end
+    end
+
+    proj_outside = outside === :error ? :error : :zero
+    P = INLASPDE.MeshProjector(mesh, locs; outside=proj_outside)
+
+    rng_range = LatentGaussianModels.component_range(model, i)
+    draws = LatentGaussianModels.posterior_sample(rng, res, model;
+        n_samples=n_samples)
+    x_block = draws.x[rng_range, :]
+    η_samples = P.A * x_block
+    cell_values = _sample_reduce(η_samples, quantity)
+
+    out = similar(template, Float64)
+    fill!(out, missingval)
+    @inbounds for k in 1:n_cells
+        ii, jj = cell_ij[k]
+        row = @view P.A[k, :]
+        if !iszero(row)
+            out[X=ii, Y=jj] = cell_values[k]
+        end
+    end
+    return out
+end
+
+_validate_sample_quantity(q::Symbol) = q === :mean || throw(ArgumentError(
+    "predict_raster: quantity Symbol must be :mean (sample-based path); " *
+    "got $(q). Use the Gaussian-approximation overload for :sd / :lower / :upper."
+))
+_validate_sample_quantity(q::Real) = (zero(q) <= q <= oneunit(q)) ||
+    throw(ArgumentError(
+        "predict_raster: quantile quantity must be in [0, 1]; got $(q)"
+    ))
+_validate_sample_quantity(::Exceedance) = nothing
+_validate_sample_quantity(q) = throw(ArgumentError(
+    "predict_raster: quantity must be :mean, a Real in [0, 1] (quantile), " *
+    "or an Exceedance; got $(typeof(q))"
+))
+
+_sample_reduce(η::AbstractMatrix, ::Symbol) = vec(Statistics.mean(η; dims=2))
+function _sample_reduce(η::AbstractMatrix, q::Real)
+    return [Statistics.quantile(view(η, k, :), q) for k in axes(η, 1)]
+end
+_sample_reduce(η::AbstractMatrix, q::Exceedance) =
+    vec(Statistics.mean(η .> q.c; dims=2))

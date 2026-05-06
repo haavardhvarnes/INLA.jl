@@ -27,6 +27,10 @@ using INLASPDERasters
         include("regression/test_extract_crs.jl")
     end
 
+    @testset "Phase O PR-2 — sample-based predict_raster + Exceedance" begin
+        include("regression/test_predict_sample.jl")
+    end
+
     @testset "Quality" begin
         include("quality/test_aqua.jl")
         include("quality/test_jet.jl")

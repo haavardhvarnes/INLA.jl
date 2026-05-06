@@ -12,15 +12,19 @@ model.
 """
 module INLASPDERasters
 
+using Random: Random
+using Statistics: Statistics
+
 using INLASPDE: INLASPDE, INLAMesh, num_vertices, SPDE2
 using LatentGaussianModels: LatentGaussianModels, LatentGaussianModel, INLAResult,
                             random_effects
 using Rasters: Rasters, Raster, X, Y
 
 include("component_resolution.jl")
+include("exceedance.jl")
 include("extract.jl")
 include("predict.jl")
 
-export extract_at_mesh, predict_raster, quantile_rasters
+export extract_at_mesh, predict_raster, quantile_rasters, Exceedance
 
 end # module

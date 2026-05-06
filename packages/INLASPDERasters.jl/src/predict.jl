@@ -7,7 +7,7 @@
 
 Project a vertex-valued field onto a raster grid matching `template`.
 
-Builds a barycentric [`MeshProjector`](@ref) from `mesh` to the cell
+Builds a barycentric `INLASPDE.MeshProjector` from `mesh` to the cell
 centres of `template` and applies it to `values`. The returned raster
 has the same dimensions, extent, resolution, and dim order as
 `template`; only the underlying array is replaced.
@@ -169,7 +169,7 @@ end
 Project a posterior summary of an SPDE component onto a raster grid
 matching `template`. Wraps the vertex-vector
 [`predict_raster`](@ref) primitive — the user-facing entry point lifts
-the per-component slice out of [`random_effects`](@ref) and forwards
+the per-component slice out of `LatentGaussianModels.random_effects` and forwards
 the corresponding vector through the barycentric mesh→raster
 projector.
 
@@ -245,7 +245,7 @@ end
                    mesh_crs = nothing) -> Raster
 
 Sample-based projection of an SPDE component onto a raster grid. Draws
-`n_samples` joint posterior samples via [`posterior_sample`](@ref),
+`n_samples` joint posterior samples via `LatentGaussianModels.posterior_sample`,
 slices the SPDE block out of each draw, projects all draws through the
 barycentric mesh→raster projector in a single sparse-dense GEMM, then
 reduces the resulting `n_cells × n_samples` matrix column-wise per
@@ -277,7 +277,7 @@ Float64s; pick `n_samples` accordingly for very large rasters.
 Pass a seeded `rng` (e.g. `Xoshiro(1234)`) to obtain bit-wise
 identical rasters across calls.
 
-See also: [`predict_raster(model, res, template; ...)`](@ref) for the
+See also: the `predict_raster(model, res, template; …)` overload for the
 Gaussian-approximation overload (cheaper, no sampling, but cannot
 produce exceedance rasters).
 """

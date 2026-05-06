@@ -123,18 +123,133 @@ for the output of `inla_mesh_2d` and `MeshProjector`. The
 bounds against R-INLA's `fmesher` outputs on the unit square,
 L-shape, and Meuse hull.
 
-## What about `@lgm`?
+## Predicting on a raster grid
 
-The [`LGMFormula.jl`](../packages/lgmformula.md) macro currently
-supports random effects whose projector is a column-indexing block
-(`f(col, Component)` with `col` an integer column in
-`1:length(Component)`). SPDE models project through a mesh-barycentric
-matrix that does not fit this shape, so `@lgm` does not yet express
-the Meuse fit; the explicit constructor above is the supported
-path.
+The fit above lives on the mesh; users typically want the spatial
+field interpolated onto a regular pixel grid for visualisation,
+overlay against rasterised covariates, or downstream geostatistical
+workflows. That is exactly what
+[`INLASPDERasters.jl`](../packages/inlaspderasters.md) provides via
+`predict_raster(model, res, template)`.
 
-Coordinate-indexed forms — `@lgm y ~ 1 + dist + f((east, north), SPDE2(mesh))` —
-are tracked as PR-7 of [Phase N](https://github.com/HaavardHvarnes/INLA.jl/blob/main/plans/phase-n.md)
-and will land as `v0.2.2`. See the
-[migration guide](../lgmformula-tutorial.md) for the planned syntax
-and the current scope of the macro.
+The raster path requires an [`SPDE2`](@ref) component constructed
+from a retained `INLAMesh` (per ADR-036), so we rebuild the model
+with a Julia-native mesh and `MeshProjector` rather than the
+fixture's `(points, tv)` + `A_field` scaffolding:
+
+```@example meuse
+using INLASPDERasters
+using Rasters: Raster, X, Y
+using Random: Xoshiro
+
+locs = fxt["input"]["locations"]::Matrix{Float64}
+
+mesh_jl = inla_mesh_2d(locs;
+    max_edge = (0.4, 0.8), cutoff = 0.05, offset = (0.2, 0.5))
+
+spde_jl = SPDE2(mesh_jl; α = 2,
+    pc = PCMatern(
+        range_U = 0.5, range_α = 0.5,
+        sigma_U = 1.0, sigma_α = 0.5,
+    ))
+
+P_obs = MeshProjector(mesh_jl, locs)
+A_field_jl = SparseMatrixCSC{Float64, Int}(P_obs.A)
+A_jl = hcat(ones(n_obs, 1), reshape(dist, n_obs, 1), A_field_jl)
+
+model_jl = LatentGaussianModel(ℓ, (c_int, c_dist, spde_jl), A_jl)
+res_jl = inla(model_jl, y)
+nothing # hide
+```
+
+The template raster fixes the output extent, resolution, and CRS;
+`predict_raster` returns a `Raster` matching it cell-for-cell, with
+`NaN` outside the mesh:
+
+```@example meuse
+xs = 178.5:0.05:181.5
+ys = 329.5:0.05:333.7
+template = Raster(zeros(length(xs), length(ys)),
+    (X(collect(xs)), Y(collect(ys))))
+
+r_mean = predict_raster(model_jl, res_jl, template;
+    component = SPDE2, quantity = :mean)
+r_lower = predict_raster(model_jl, res_jl, template;
+    component = SPDE2, quantity = :lower)
+r_upper = predict_raster(model_jl, res_jl, template;
+    component = SPDE2, quantity = :upper)
+
+interior(r) = filter(!isnan, parent(r))
+(
+    grid_size = size(r_mean),
+    n_cells_inside_mesh = count(!isnan, parent(r_mean)),
+    mean_extrema  = extrema(interior(r_mean)),
+    lower_extrema = extrema(interior(r_lower)),
+    upper_extrema = extrema(interior(r_upper)),
+)
+```
+
+`r_mean`, `r_lower`, `r_upper` are projections of the per-vertex
+posterior summaries reported by `random_effects(model_jl, res_jl)`
+onto the cell centres of `template`. They share the template's
+extent, resolution, and CRS — ready for direct plotting or overlay
+against a rasterised covariate.
+
+For tail probabilities — for example, "the probability that the
+SPDE residual exceeds 0.5 log-mg/kg" — the Gaussian-approximation
+overload cannot help, since a per-cell `P(η > c)` is not a linear
+functional of the vertex marginals. The sample-based overload
+threads draws from the joint posterior through the same projector
+and reduces in-cell:
+
+```@example meuse
+rng = Xoshiro(20260506)
+r_exc = predict_raster(rng, model_jl, res_jl, template;
+    component = SPDE2,
+    quantity = Exceedance(0.5),
+    n_samples = 500)
+(
+    n_cells_inside_mesh = count(!isnan, parent(r_exc)),
+    exceedance_extrema  = extrema(interior(r_exc)),
+)
+```
+
+Each cell of `r_exc` is the empirical fraction of posterior draws
+in which the SPDE field at that cell exceeds `0.5`. The
+`Exceedance` wrapper distinguishes "value to threshold against"
+from "credible-level quantile to compute" — passing a `Real` in
+`[0, 1]` instead computes the per-cell quantile of the sampled
+field.
+
+## Coming from R-INLA: the `@lgm` macro
+
+The same fit expresses cleanly through `LGMFormula.jl`'s `@lgm`
+macro. Coordinate-indexed terms `f((east, north), spde)` invoke the
+`MeshProjector` for you and place the resulting block in the design
+matrix at the position implied by formula order — the explicit
+constructor above and the macro both produce the same
+`LatentGaussianModel`:
+
+```@example meuse
+using LGMFormula
+
+df = (
+    logzinc = y,
+    dist    = dist,
+    east    = locs[:, 1],
+    north   = locs[:, 2],
+)
+
+model_macro = @lgm logzinc ~ 1 + dist + f((east, north), spde_jl) data=df family=GaussianLikelihood(hyperprior=PCPrecision(1.0, 0.01))
+(
+    A_size            = size(model_macro.mapping.A),
+    components        = nameof.(typeof.(model_macro.components)),
+    matches_explicit  = size(model_macro.mapping.A) == size(model_jl.mapping.A),
+)
+```
+
+The tuple-coordinate form requires `INLASPDE` to be loaded so the
+`LGMFormulaINLASPDEExt` weakdep extension is active; that is
+satisfied here by the `using INLASPDE` at the top of the vignette.
+See the [migration guide](../lgmformula-tutorial.md) for the full
+range of forms `@lgm` accepts.

@@ -8,35 +8,48 @@ Companion package to [`INLASPDE.jl`](../INLASPDE.jl/).
 
 ## Status
 
-`v0.1.0-rc1`. **Scaffolding only** — package skeleton, dependency
-declaration, and test stubs are in place, but the raster-glue API
-(`extract_at_mesh`, `predict_raster`) is not yet implemented. Activates
-in v0.2.
+`v0.4.0`. The package ships a working raster-SPDE bridge and is
+exercised end-to-end by the
+[Meuse SPDE vignette](../../docs/src/vignettes/meuse-spde.md):
 
-The Meuse SPDE vignette has landed in the
-[main docs site](../../docs/src/vignettes/meuse-spde.md), but the
-example there constructs the SPDE A-matrix and covariate vectors
-manually rather than going through this package. Once the raster glue
-ships, the vignette will be rewritten to use it directly.
+- [`extract_at_mesh`](src/extract.jl) — sample a `Raster` at mesh
+  vertex coordinates.
+- [`predict_raster`](src/predict.jl) — Gaussian-approximation and
+  sample-based SPDE → raster projection.
+- [`quantile_rasters`](src/predict.jl) — joint mean / sd / lower /
+  upper credible-interval rasters from per-vertex summaries.
+- [`Exceedance`](src/exceedance.jl) — quantity wrapper for tail
+  probabilities under the sample-based path.
 
-## Planned API
+CRS mismatches between mesh and raster are surfaced at the API
+boundary (see `mesh_crs` keyword, ADR-041).
 
-The following sketch shows the intended call shapes; none of these
-functions are exported yet.
+## API at a glance
 
 ```julia
-using INLASPDE, INLASPDERasters, Rasters
+using INLASPDE, INLASPDERasters, Rasters, Random
 
-# Extract elevation at mesh vertices
-elev_raster      = Raster("elevation.tif")
+# 1. Extract a covariate raster onto mesh vertices.
+elev_raster = Raster("elevation.tif")
 elev_at_vertices = extract_at_mesh(elev_raster, mesh)
 
-# Predict on a grid defined by the raster's extent and resolution
-pred_raster = predict_raster(fit, mesh, elev_raster)  # -> Raster
+# 2. Project a fitted SPDE component back onto a target grid.
+template = Raster(zeros(nx, ny), (X(xs), Y(ys)))
+r_mean  = predict_raster(model, res, template;
+    component = SPDE2, quantity = :mean)
+r_lower = predict_raster(model, res, template;
+    component = SPDE2, quantity = :lower)
+
+# 3. Sample-based path for exceedance probabilities P(η > c | y).
+rng = Xoshiro(123)
+r_exc = predict_raster(rng, model, res, template;
+    component = SPDE2, quantity = Exceedance(0.5), n_samples = 1000)
 ```
 
-CRS handling will be done via `CoordRefSystems.jl`; mismatches between
-mesh CRS and raster CRS will be detected at the API boundary.
+`predict_raster(model, res, template)` requires the `SPDE2` component
+to retain its mesh — construct it via `SPDE2(mesh::INLAMesh; …)`
+rather than the back-compat `SPDE2(points, triangles; …)` form
+(ADR-036).
 
 ## Why a separate package, not a weakdep of INLASPDE
 

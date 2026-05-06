@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "d9e78bdfe194ec90314c4568ef09f935acfd1d24"
+project_hash = "322ecdd5542d3edbe43d58b9b2791e9c9d12458d"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -758,7 +758,7 @@ version = "0.3.28"
 deps = ["CoordRefSystems", "DelaunayTriangulation", "GMRFs", "LatentGaussianModels", "LinearAlgebra", "Meshes", "SciMLOperators", "SparseArrays"]
 path = "../packages/INLASPDE.jl"
 uuid = "2835c710-3f40-4945-979f-d21c9e20d425"
-version = "0.2.0"
+version = "0.3.0"
 
     [deps.INLASPDE.extensions]
     INLASPDEGeoInterfaceExt = "GeoInterface"
@@ -769,10 +769,10 @@ version = "0.2.0"
     MakieCore = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
 
 [[deps.INLASPDERasters]]
-deps = ["GMRFs", "INLASPDE", "LatentGaussianModels", "Rasters"]
+deps = ["GMRFs", "INLASPDE", "LatentGaussianModels", "Random", "Rasters", "Statistics"]
 path = "../packages/INLASPDERasters.jl"
 uuid = "28708ac2-a765-4cf9-a54c-708b26c5e9a3"
-version = "0.2.0"
+version = "0.4.0"
 
 [[deps.IOCapture]]
 deps = ["Logging", "Random"]
@@ -931,7 +931,11 @@ version = "0.4.1"
 deps = ["LatentGaussianModels", "SparseArrays", "StatsModels", "Tables"]
 path = "../packages/LGMFormula.jl"
 uuid = "bd1353c5-d16b-48e9-b430-0ac24b813647"
-version = "0.2.0"
+version = "0.4.0"
+weakdeps = ["INLASPDE"]
+
+    [deps.LGMFormula.extensions]
+    LGMFormulaINLASPDEExt = "INLASPDE"
 
 [[deps.LRUCache]]
 git-tree-sha1 = "5519b95a490ff5fe629c4a7aa3b3dfc9160498b3"

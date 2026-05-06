@@ -68,8 +68,8 @@ x = randn(rng, n_rows)
 Y = zeros(Int, n_rows, K)
 for i in 1:n_rows
     η   = (β_true[1] * x[i], β_true[2] * x[i], 0.0)
-    p_i = exp.(η .- maximum(η)); p_i ./= sum(p_i)
-    Y[i, :] .= rand(rng, Multinomial(N_trials, collect(p_i)))
+    p_i = collect(exp.(η .- maximum(η))); p_i ./= sum(p_i)
+    Y[i, :] .= rand(rng, Multinomial(N_trials, p_i))
 end
 (class_totals = sum(Y, dims = 1), N_total = sum(Y))
 ```

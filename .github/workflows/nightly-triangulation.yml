@@ -1,0 +1,80 @@
+name: Nightly tier-3 triangulation
+
+# Phase P PR-1 — full NUTS-vs-INLA triangulation including the Meuse SPDE.
+#
+# Scotland and Pennsylvania BYM2 NUTS chains run on every PR build (each
+# is < 1 min); Meuse SPDE adds ~10 min wall-clock because each leapfrog
+# step Laplace-fits a 355-dim latent. We pay that cost nightly, not on
+# PRs, by running `Pkg.test("LGMTuring"; test_args=["--triangulation"])`
+# here. Failures here open a tracking issue, not a release-blocker on
+# main.
+on:
+  schedule:
+    - cron: '0 5 * * 1'  # Every Monday 05:00 UTC (one hour after nightly-upstream)
+  workflow_dispatch:
+
+jobs:
+  triangulation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Dev-link intra-ecosystem deps + INLASPDE
+        # Same payload as `test.yml` for the [deps] transitive closure,
+        # plus `INLASPDE` explicitly: the Meuse SPDE triangulation test
+        # gates itself on `Base.find_package("INLASPDE") !== nothing` to
+        # avoid forcing INLASPDE into LGMTuring's [extras] (the personal
+        # registry caps INLASPDE at 0.1.x while the in-tree source is
+        # 0.3.0, and Pkg.test's sandbox would re-resolve to the stale
+        # registry version). Dev-linking it here makes
+        # `Base.find_package` succeed.
+        shell: julia --color=yes {0}
+        env:
+          JULIA_PROJECT: packages/LGMTuring.jl
+        run: |
+          using Pkg, TOML
+          active = abspath(ENV["JULIA_PROJECT"])
+          local_by_name = Dict{String,String}()
+          for p in readdir("packages", join=true)
+              (isdir(p) && isdir(joinpath(p, "src")) && abspath(p) != active) || continue
+              name = TOML.parsefile(joinpath(p, "Project.toml"))["name"]
+              local_by_name[name] = p
+          end
+          proj = TOML.parsefile(joinpath(active, "Project.toml"))
+          seed = collect(keys(get(proj, "deps", Dict{String,Any}())))
+          append!(seed, keys(get(proj, "extras", Dict{String,Any}())))
+          push!(seed, "INLASPDE")  # Meuse triangulation — see comment above.
+          to_dev_paths = String[]
+          to_dev_names = Set{String}()
+          queue = seed
+          while !isempty(queue)
+              name = popfirst!(queue)
+              (name in to_dev_names || !haskey(local_by_name, name)) && continue
+              push!(to_dev_names, name)
+              p = local_by_name[name]
+              push!(to_dev_paths, p)
+              sub_deps = get(TOML.parsefile(joinpath(p, "Project.toml")), "deps", Dict{String,Any}())
+              append!(queue, keys(sub_deps))
+          end
+          isempty(to_dev_paths) || Pkg.develop([Pkg.PackageSpec(path=p) for p in to_dev_paths])
+          Pkg.instantiate()
+      - name: Run full triangulation suite
+        shell: julia --color=yes --project=packages/LGMTuring.jl {0}
+        run: |
+          using Pkg
+          Pkg.test("LGMTuring"; test_args=["--triangulation"])
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Nightly triangulation failed (${new Date().toISOString().slice(0,10)})`,
+              body: `See run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['triangulation', 'tier-3']
+            });

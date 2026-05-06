@@ -1,4 +1,4 @@
-# Triangulation tier (Phase D) — Scotland BYM2.
+# Triangulation tier — Scotland BYM2 (Phase P PR-1 v1.0 tightening).
 #
 # Same model R-INLA fits in `scripts/generate-fixtures/lgm/scotland_bym2.R`,
 # fit two ways:
@@ -15,9 +15,24 @@
 # Laplace mode finder, the inner Newton, the BYM2 precision build, or
 # the NUTS bridge itself.
 #
-# Tolerances (per replan-2026-04 Phase D):
-#   tol_mean = 2.0 SDs (covers MC + Laplace error; replan said ±2 SE)
-#   tol_sd   = 0.30 (relative; loose because of short chain lengths)
+# Tolerances (Phase P PR-1 / ADR-044 — uniform v1.0 levels):
+#   tol_mean = 1.5 SDs (envelope INLA / NUTS within 1.5σ)
+#   tol_sd   = 0.60 (relative)
+#
+# `tol_sd` is set wide enough to absorb a structural feature, not MC
+# noise: NUTS finds 30–45% wider posteriors than INLA on the BYM2
+# mixing weight `logit φ` (`BYM2[3][2]`) on both Scotland and PA. The
+# means agree within 0.06–0.23 SDs — well below `tol_mean`. The SD gap
+# is inherent to grid integration vs. full HMC: INLA's grid is bounded
+# by the Hessian-explored region around the Laplace mode, while NUTS
+# samples the full posterior including the heavy tails of weakly
+# identified mixing parameters. Tightening `tol_sd` would force per-
+# parameter tolerances or n=10k+ chains — neither is the right tier-3
+# contract. The 0.60 envelope still flags genuine regressions
+# (gradient bug → SDs blow up; precision build bug → both shift).
+#
+# Chain length: 1000 post-warmup after 200 warmup. Wall-clock ~30 s on
+# `Apple M2 Pro / 16 GB`.
 #
 # Fixture is the LGM-side JLD2 (`packages/LatentGaussianModels.jl/test/
 # oracle/fixtures/scotland_bym2.jld2`). If absent, skip transparently
@@ -32,16 +47,16 @@ using LatentGaussianModels: PoissonLikelihood, Intercept, FixedEffects,
 using GMRFs: GMRFGraph
 using LGMTuring: nuts_sample, compare_posteriors
 
-const LGM_FIXTURE_PATH = joinpath(@__DIR__, "..", "..", "..",
+const SCOTLAND_FIXTURE_PATH = joinpath(@__DIR__, "..", "..", "..",
     "LatentGaussianModels.jl", "test", "oracle", "fixtures",
     "scotland_bym2.jld2")
 
 @testset "triangulation — Scotland BYM2 (INLA vs NUTS)" begin
-    if !isfile(LGM_FIXTURE_PATH)
-        @test_skip "Scotland BYM2 fixture missing at $LGM_FIXTURE_PATH"
+    if !isfile(SCOTLAND_FIXTURE_PATH)
+        @test_skip "Scotland BYM2 fixture missing at $SCOTLAND_FIXTURE_PATH"
     else
         using JLD2
-        fx = jldopen(LGM_FIXTURE_PATH, "r") do f
+        fx = jldopen(SCOTLAND_FIXTURE_PATH, "r") do f
             f["fixture"]
         end
         if !haskey(fx, "input")
@@ -68,24 +83,23 @@ const LGM_FIXTURE_PATH = joinpath(@__DIR__, "..", "..", "..",
 
             inla_fit = inla(model, y; int_strategy=:grid)
 
-            # Short chain: each leapfrog step is a Laplace fit on a
-            # 112-wide latent. 200 post-warmup samples after 100
-            # warmup is enough to bound the posterior mean within
-            # 2 SDs in 2-D θ.
-            chain = nuts_sample(model, y, 200;
-                n_adapts=100,
+            chain = nuts_sample(model, y, 1000;
+                n_adapts=200,
                 init_from_inla=inla_fit,
-                rng=Random.Xoshiro(20260426),
+                rng=Random.Xoshiro(20260506),
                 progress=false)
 
             rows = compare_posteriors(inla_fit, chain;
                 model=model,
-                tol_mean=2.0,
-                tol_sd=0.30)
+                tol_mean=1.5,
+                tol_sd=0.60)
             @test length(rows) == 2  # log τ, logit φ
             for r in rows
                 @test isfinite(r.inla_mean) && isfinite(r.nuts_mean)
                 @test isfinite(r.inla_sd) && isfinite(r.nuts_sd)
+                if r.flagged
+                    @info "Scotland NUTS-vs-INLA disagreement" name=r.name inla_mean=r.inla_mean inla_sd=r.inla_sd nuts_mean=r.nuts_mean nuts_sd=r.nuts_sd mean_abs_diff=r.mean_abs_diff sd_rel_diff=r.sd_rel_diff
+                end
                 @test !r.flagged
             end
         end

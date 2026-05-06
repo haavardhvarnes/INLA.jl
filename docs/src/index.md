@@ -68,6 +68,15 @@ Pkg.develop(url = "https://github.com/haavardhvarnes/INLA.jl",
 
 - **[Getting started](getting-started.md)** — the smallest possible
   Poisson + spatial random effect fit, top to bottom.
+- **[Coming from R-INLA → Migration guide](coming-from-r-inla.md)** —
+  side-by-side reference: every R-INLA `family`, `f(model = ...)`,
+  prior, integration strategy, and post-fit accessor mapped to its
+  Julia constructor or accessor function. Open this next to your R
+  script while translating.
+- **[Coming from R-INLA → Formula DSL (`@lgm`)](lgmformula-tutorial.md)** —
+  if your R-INLA workflow leans on the formula DSL, the `@lgm` macro
+  in `LGMFormula.jl` provides a near-source-to-source migration
+  path. Worked examples for Scotland BYM2 and beyond.
 - **Vignettes** — five end-to-end walkthroughs:
   - [Scotland BYM2](vignettes/scotland-bym2.md) (areal Poisson with
     BYM2 spatial random effect),
@@ -88,7 +97,11 @@ Pkg.develop(url = "https://github.com/haavardhvarnes/INLA.jl",
 
 ## Differences from R-INLA
 
-The full list lives in
+A side-by-side surface map for every R-INLA construct currently
+covered (likelihoods, components, priors, accessors, prediction,
+sampling) lives in [Coming from R-INLA → Migration
+guide](coming-from-r-inla.md). The full list of
+default-parameter parity calls lives in
 [`plans/defaults-parity.md`](https://github.com/HaavardHvarnes/INLA.jl/blob/main/plans/defaults-parity.md).
 Highlights:
 

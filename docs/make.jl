@@ -36,7 +36,10 @@ makedocs(
         "Home" => "index.md",
         "Getting started" => "getting-started.md",
         "Extending" => "extending.md",
-        "Coming from R-INLA" => "lgmformula-tutorial.md",
+        "Coming from R-INLA" => [
+            "Migration guide" => "coming-from-r-inla.md",
+            "Formula DSL (`@lgm`)" => "lgmformula-tutorial.md"
+        ],
         "Vignettes" => [
             "Areal — Scotland BYM2" => "vignettes/scotland-bym2.md",
             "Temporal — Tokyo rainfall" => "vignettes/tokyo-rainfall.md",

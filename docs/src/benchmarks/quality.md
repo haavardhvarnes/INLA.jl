@@ -33,6 +33,38 @@ Markdown.parse(read(joinpath(@__DIR__, "..", "..", "..", "bench",
 | Pennsylvania BYM2 | within 5% | within 10% | within 1% |
 | Meuse SPDE | within 1% | within 6% | within 5% |
 
+## Performance vs R-INLA
+
+Wall-clock comparison on the same three datasets, single-threaded
+BLAS on both sides, runs a separate harness under
+[`benchmarks/`](https://github.com/HaavardHvarnes/INLA.jl/tree/main/benchmarks).
+Methodology, version pins, and the full markdown table land in
+per-(date, architecture) files under
+[`benchmarks/results/`](https://github.com/HaavardHvarnes/INLA.jl/tree/main/benchmarks/results)
+— the headline number per release is below; everything else
+(IQR, allocation footprint, hardware spec, R + R-INLA + Julia
+versions) is in the result file.
+
+| Dataset | INLA.jl median | R-INLA median | Speedup | Result file |
+|---|---:|---:|---:|---|
+| Scotland BYM2 | 0.07s | 28.00s | 392× | [`2026-05-07_apple_aarch64.md`](https://github.com/HaavardHvarnes/INLA.jl/blob/main/benchmarks/results/2026-05-07_apple_aarch64.md) |
+| Pennsylvania BYM2 | 0.11s | 28.36s | 247× | _(same)_ |
+| Meuse SPDE | 1.18s | 5.76s | 5× | _(same)_ |
+
+The Scotland and Pennsylvania speedups are dominated by R-INLA's
+per-fit C-binary startup overhead — a constant ~25–30s load time on
+this hardware that dwarfs the actual fit on small areal-Poisson
+problems. The Meuse comparison reflects the genuine factorisation
+work on a 2,000-vertex SPDE mesh, where the gap is closer to a
+single decimal order. Multi-threaded numbers — once the
+`GMRFsPardiso.jl` factorisation backend lands as a weakdep — will
+ship as a separate table in future result files. To reproduce:
+
+```
+julia --project=benchmarks -e 'using Pkg; Pkg.instantiate()'
+julia --project=benchmarks benchmarks/run.jl
+```
+
 ## Helpers (hidden)
 
 ```@setup bench

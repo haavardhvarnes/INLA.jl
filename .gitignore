@@ -37,8 +37,12 @@ __pycache__/
 # under packages/*/test/oracle/fixtures/ is committed.
 scripts/generate-fixtures/fixtures/
 
-# Benchmark output
-benchmarks/results/
+# Benchmark output — markdown results files are versioned per
+# `plans/quality-and-perf-benchmarks.md` Part 2 ("Results are versioned
+# in-repo so the user / reader can see how the gap evolves over
+# releases"); transient JSON / tune artifacts are not.
+benchmarks/results/*
+!benchmarks/results/*.md
 benchmarks/tune.json
 bench/oracle_compare_julia.json
 bench/oracle_compare_run.log

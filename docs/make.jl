@@ -17,7 +17,7 @@ DocMeta.setdocmeta!(LGMFormula, :DocTestSetup,
 makedocs(
     sitename="Julia INLA Ecosystem",
     authors="Julia INLA contributors",
-    repo="https://github.com/HaavardHvarnes/INLA.jl/blob/{commit}{path}#{line}",
+    repo="https://github.com/haavardhvarnes/INLA.jl/blob/{commit}{path}#{line}",
     modules=[GMRFs, LatentGaussianModels, INLASPDE, INLASPDERasters, LGMFormula],
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", nothing) == "true",
@@ -67,7 +67,7 @@ makedocs(
 )
 
 deploydocs(;
-    repo="github.com/HaavardHvarnes/INLA.jl.git",
+    repo="github.com/haavardhvarnes/INLA.jl.git",
     devbranch="main",
     push_preview=true
 )

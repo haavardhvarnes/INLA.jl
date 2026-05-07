@@ -18,8 +18,8 @@
 using JLD2
 using SparseArrays
 using LatentGaussianModels:
-    LatentGaussianModel, GaussianLikelihood, PCPrecision,
-    Intercept, inla, fixed_effects
+                            LatentGaussianModel, GaussianLikelihood, PCPrecision,
+                            Intercept, inla, fixed_effects
 
 @testset "Lindgren-Rue-Lindström §3.2 — non-stationary SPDE posterior agreement with R-INLA" begin
     fxt = load(joinpath(@__DIR__, "fixtures",
@@ -43,18 +43,18 @@ using LatentGaussianModels:
     # --- Julia-side model -------------------------------------------
     # Independent-Gaussian basis prior matching R-INLA's
     # `theta.prior.mean = c(0, 0, 0)` / `theta.prior.prec = c(1, 1, 1)`.
-    prior = GaussianBasisPrior(mean = zeros(3), prec = ones(3))
+    prior = GaussianBasisPrior(mean=zeros(3), prec=ones(3))
     spde = SPDE2NonStationary(points, triangles;
-        α = 2, B_τ = B_τ, B_κ = B_κ, prior = prior)
+        α=2, B_τ=B_τ, B_κ=B_κ, prior=prior)
 
     # `prec.intercept = 1e-3` is a *proper* N(0, 1000) intercept.
-    intercept = Intercept(prec = 1.0e-3, improper = false)
+    intercept = Intercept(prec=1.0e-3, improper=false)
 
     # Stack: x = [α, u(field)]
     A_intercept = ones(n_obs, 1)
     A = hcat(A_intercept, A_field)
 
-    like = GaussianLikelihood(hyperprior = PCPrecision(1.0, 0.01))
+    like = GaussianLikelihood(hyperprior=PCPrecision(1.0, 0.01))
     model = LatentGaussianModel(like, (intercept, spde), A)
 
     res = inla(model, y)
@@ -65,9 +65,9 @@ using LatentGaussianModels:
     sf_sd = fxt["summary_fixed"]["sd"]
     fixed_names = sf_rows isa AbstractVector ? sf_rows : [sf_rows]
     r_intercept = Float64(sf_mean isa AbstractVector ?
-        sf_mean[findfirst(==("intercept"), fixed_names)] : sf_mean)
+                          sf_mean[findfirst(==("intercept"), fixed_names)] : sf_mean)
     r_sd_intercept = Float64(sf_sd isa AbstractVector ?
-        sf_sd[findfirst(==("intercept"), fixed_names)] : sf_sd)
+                             sf_sd[findfirst(==("intercept"), fixed_names)] : sf_sd)
 
     sh_rows = fxt["summary_hyperpar"]["rownames"]
     sh_mean = Float64.(fxt["summary_hyperpar"]["mean"])

@@ -164,7 +164,10 @@ jobs:
         shell: julia --color=yes {0}
         run: |
           using Pkg
-          Pkg.add(Pkg.PackageSpec(name="JuliaFormatter", version="1"))
+          # Pinned to a specific patch so future formatter releases don't
+          # silently break this job. Bump deliberately together with a
+          # repo-wide reformat.
+          Pkg.add(Pkg.PackageSpec(name="JuliaFormatter", version="1.0.62"))
       - name: Check formatting
         shell: julia --color=yes {0}
         run: |

@@ -79,8 +79,8 @@ function log_hyperprior(ℓ::GEVLikelihood, θ)
            log_prior_density(ℓ.shape_prior, θ[2])
 end
 
-@inline _gev_weight(ℓ::GEVLikelihood, i) =
-    ℓ.weights === nothing ? 1.0 : Float64(ℓ.weights[i])
+@inline _gev_weight(ℓ::GEVLikelihood, i) = ℓ.weights === nothing ? 1.0 :
+                                           Float64(ℓ.weights[i])
 
 # --- identity-link closed forms ---------------------------------------
 # Let z_i = √(τ s_i) (y_i − η_i), A_i = 1 + ξ z_i (must be > 0),

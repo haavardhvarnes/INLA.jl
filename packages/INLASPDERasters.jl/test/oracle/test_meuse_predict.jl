@@ -80,7 +80,8 @@ function _inla_mesh_from_arrays(points::Matrix{Float64},
     points_tup = [(points[i, 1], points[i, 2]) for i in 1:n_v]
     n_t = size(triangles, 1)
     tris_tup = NTuple{3, Int}[
-        (triangles[k, 1], triangles[k, 2], triangles[k, 3]) for k in 1:n_t]
+                              (triangles[k, 1], triangles[k, 2], triangles[k, 3])
+                              for k in 1:n_t]
     boundary = _boundary_loop_from_triangles(triangles)
     # DT expects a closed loop (first vertex repeated at the end), wrapped
     # in the triple-nested `[[loop]]` form that INLASPDE's
@@ -146,13 +147,13 @@ end
     julia_inside = 0
     julia_outside_matches_R = 0
     for j in 1:ny, i in 1:nx
-        v_J = r_mean_J[X = i, Y = j]
+        v_J = r_mean_J[X=i, Y=j]
         if ok[i, j]
             @test isfinite(v_J)
             @test isfinite(pixel_mean_R[i, j])
             abs_err_mean = max(abs_err_mean, abs(v_J - pixel_mean_R[i, j]))
             abs_err_sd = max(abs_err_sd,
-                abs(r_sd_J[X = i, Y = j] - pixel_sd_R[i, j]))
+                abs(r_sd_J[X=i, Y=j] - pixel_sd_R[i, j]))
             julia_inside += 1
         else
             # R said outside (NA → NaN in fixture); Julia should also
@@ -171,7 +172,7 @@ end
     # well away from the boundary, so the mismatch count near the
     # boundary is expected to stay small but nonzero. We don't gate
     # on it; the inside-cell agreement is the load-bearing assertion.
-    @info "Meuse predict oracle" abs_err_mean abs_err_sd inside_cells = n_inside outside_cells = (
+    @info "Meuse predict oracle" abs_err_mean abs_err_sd inside_cells=n_inside outside_cells=(
         nx * ny - n_inside)
 
     # ---- 1e-10 tight gate -----------------------------------------
@@ -191,26 +192,26 @@ end
     A_field = SparseMatrixCSC{Float64, Int}(fxt["A_field"])
     n_obs = length(y)
 
-    spde = SPDE2(points, tv; α = 2,
-        pc = PCMatern(
-            range_U = 0.5, range_α = 0.5,
-            sigma_U = 1.0, sigma_α = 0.5
+    spde = SPDE2(points, tv; α=2,
+        pc=PCMatern(
+            range_U=0.5, range_α=0.5,
+            sigma_U=1.0, sigma_α=0.5
         ))
-    intercept = Intercept(prec = 1.0e-3, improper = false)
-    beta_dist = FixedEffects(1; prec = 1.0e-3)
+    intercept = Intercept(prec=1.0e-3, improper=false)
+    beta_dist = FixedEffects(1; prec=1.0e-3)
     A = hcat(ones(n_obs, 1), reshape(dist_cov, n_obs, 1), A_field)
 
-    like = GaussianLikelihood(hyperprior = PCPrecision(1.0, 0.01))
+    like = GaussianLikelihood(hyperprior=PCPrecision(1.0, 0.01))
     model = LatentGaussianModel(like, (intercept, beta_dist, spde), A)
 
     # Rebuild SPDE2 with retained mesh so the (model, res, template)
     # overload can resolve the projector geometry. The test re-fits
     # rather than reusing `res` from somewhere else.
     mesh_ret = _inla_mesh_from_arrays(points, tv)
-    spde_ret = SPDE2(mesh_ret; α = 2,
-        pc = PCMatern(
-            range_U = 0.5, range_α = 0.5,
-            sigma_U = 1.0, sigma_α = 0.5
+    spde_ret = SPDE2(mesh_ret; α=2,
+        pc=PCMatern(
+            range_U=0.5, range_α=0.5,
+            sigma_U=1.0, sigma_α=0.5
         ))
     P_obs = MeshProjector(mesh_ret, fxt["input"]["locations"]::Matrix{Float64})
     A_obs_ret = SparseMatrixCSC{Float64, Int}(P_obs.A)
@@ -220,7 +221,7 @@ end
     res_ret = inla(model_ret, y)
 
     r_mean_fit = predict_raster(model_ret, res_ret, template;
-        component = SPDE2, quantity = :mean)
+        component=SPDE2, quantity=:mean)
 
     # Compare to R-INLA's pixel mean only on inside cells. Use the
     # posterior-SD raster as a yardstick: pointwise error should be
@@ -230,12 +231,12 @@ end
     fit_diffs = Float64[]
     for ij in inside_idx
         i, j = Tuple(ij)
-        v = r_mean_fit[X = i, Y = j]
+        v = r_mean_fit[X=i, Y=j]
         @test isfinite(v)
         push!(fit_diffs, abs(v - pixel_mean_R[i, j]))
     end
     median_R_sd = sort(filter(isfinite, vec(pixel_sd_R)))[length(filter(
-        isfinite, vec(pixel_sd_R))) ÷ 2]
+    isfinite, vec(pixel_sd_R))) ÷ 2]
     rms_fit_err = sqrt(sum(abs2, fit_diffs) / length(fit_diffs))
     @info "Meuse fit-then-project agreement" rms_fit_err median_R_sd
     # 1.0 × the median R-INLA pixel SD — fit-side mode-vs-mean and

@@ -366,23 +366,28 @@ function predict_raster(
     return out
 end
 
-_validate_sample_quantity(q::Symbol) = q === :mean || throw(ArgumentError(
-    "predict_raster: quantity Symbol must be :mean (sample-based path); " *
-    "got $(q). Use the Gaussian-approximation overload for :sd / :lower / :upper."
-))
-_validate_sample_quantity(q::Real) = (zero(q) <= q <= oneunit(q)) ||
-    throw(ArgumentError(
-        "predict_raster: quantile quantity must be in [0, 1]; got $(q)"
+function _validate_sample_quantity(q::Symbol)
+    q === :mean || throw(ArgumentError(
+        "predict_raster: quantity Symbol must be :mean (sample-based path); " *
+        "got $(q). Use the Gaussian-approximation overload for :sd / :lower / :upper."
     ))
+end
+function _validate_sample_quantity(q::Real)
+    (zero(q) <= q <= oneunit(q)) ||
+        throw(ArgumentError(
+            "predict_raster: quantile quantity must be in [0, 1]; got $(q)"
+        ))
+end
 _validate_sample_quantity(::Exceedance) = nothing
-_validate_sample_quantity(q) = throw(ArgumentError(
-    "predict_raster: quantity must be :mean, a Real in [0, 1] (quantile), " *
-    "or an Exceedance; got $(typeof(q))"
-))
+function _validate_sample_quantity(q)
+    throw(ArgumentError(
+        "predict_raster: quantity must be :mean, a Real in [0, 1] (quantile), " *
+        "or an Exceedance; got $(typeof(q))"
+    ))
+end
 
 _sample_reduce(η::AbstractMatrix, ::Symbol) = vec(Statistics.mean(η; dims=2))
 function _sample_reduce(η::AbstractMatrix, q::Real)
     return [Statistics.quantile(view(η, k, :), q) for k in axes(η, 1)]
 end
-_sample_reduce(η::AbstractMatrix, q::Exceedance) =
-    vec(Statistics.mean(η .> q.c; dims=2))
+_sample_reduce(η::AbstractMatrix, q::Exceedance) = vec(Statistics.mean(η .> q.c; dims=2))

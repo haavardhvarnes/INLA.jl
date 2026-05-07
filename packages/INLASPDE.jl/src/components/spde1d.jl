@@ -38,7 +38,7 @@ Q = precision_matrix(spde, [0.0, 0.0])   # (log τ, log κ) = (0, 0)
 ```
 """
 struct SPDE1D{
-        α, T, FE <: FEMMatrices{T}, G <: GMRFs.AbstractGMRFGraph, PR <: PCMatern{1}
+    α, T, FE <: FEMMatrices{T}, G <: GMRFs.AbstractGMRFGraph, PR <: PCMatern{1}
 } <: AbstractLatentComponent
     fem::FE
     graph::G

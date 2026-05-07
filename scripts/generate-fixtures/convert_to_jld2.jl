@@ -175,16 +175,16 @@ function _convert_predict(p)
     nx = Int(p["nx"])
     ny = Int(p["ny"])
     return Dict{String, Any}(
-        "grid_x"      => Float64.(collect(p["grid_x"])),
-        "grid_y"      => Float64.(collect(p["grid_y"])),
-        "nx"          => nx,
-        "ny"          => ny,
-        "A"           => triplet_to_sparse(p["A"]),
-        "ok"          => _rows_to_bool_matrix(p["ok"], nx, ny),
+        "grid_x" => Float64.(collect(p["grid_x"])),
+        "grid_y" => Float64.(collect(p["grid_y"])),
+        "nx" => nx,
+        "ny" => ny,
+        "A" => triplet_to_sparse(p["A"]),
+        "ok" => _rows_to_bool_matrix(p["ok"], nx, ny),
         "vertex_mean" => Float64.(collect(p["vertex_mean"])),
-        "vertex_sd"   => Float64.(collect(p["vertex_sd"])),
-        "pixel_mean"  => _rows_to_float_matrix_with_nan(p["pixel_mean"], nx, ny),
-        "pixel_sd"    => _rows_to_float_matrix_with_nan(p["pixel_sd"], nx, ny)
+        "vertex_sd" => Float64.(collect(p["vertex_sd"])),
+        "pixel_mean" => _rows_to_float_matrix_with_nan(p["pixel_mean"], nx, ny),
+        "pixel_sd" => _rows_to_float_matrix_with_nan(p["pixel_sd"], nx, ny)
     )
 end
 
@@ -192,7 +192,7 @@ function _rows_to_float_matrix_with_nan(rows, nrow, ncol)
     M = Matrix{Float64}(undef, nrow, ncol)
     for i in 1:nrow
         row = collect(rows[i])
-        @assert length(row) == ncol "predict-row $i has length $(length(row)) ≠ ncol=$ncol"
+        @assert length(row)==ncol "predict-row $i has length $(length(row)) ≠ ncol=$ncol"
         for j in 1:ncol
             v = row[j]
             M[i, j] = v === nothing ? NaN : Float64(v)
@@ -205,7 +205,7 @@ function _rows_to_bool_matrix(rows, nrow, ncol)
     M = Matrix{Bool}(undef, nrow, ncol)
     for i in 1:nrow
         row = collect(rows[i])
-        @assert length(row) == ncol "ok-row $i has length $(length(row)) ≠ ncol=$ncol"
+        @assert length(row)==ncol "ok-row $i has length $(length(row)) ≠ ncol=$ncol"
         for j in 1:ncol
             M[i, j] = Bool(row[j])
         end

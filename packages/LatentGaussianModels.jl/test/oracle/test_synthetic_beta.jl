@@ -62,7 +62,7 @@ end
             A = sparse(hcat(ones(n), reshape(x, n, 1)))
             model = LatentGaussianModel(ℓ, (c_int, c_beta), A)
 
-            res = inla(model, y; int_strategy = :grid)
+            res = inla(model, y; int_strategy=:grid)
 
             # --- Fixed effects ------------------------------------------------
             sf = fx["summary_fixed"]

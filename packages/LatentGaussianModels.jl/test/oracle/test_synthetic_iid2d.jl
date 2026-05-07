@@ -78,7 +78,7 @@ end
             y_1 = Float64.(inp["y_1"])
             y_2 = Float64.(inp["y_2"])
             n_groups = Int(inp["n_groups"])
-            m_reps   = Int(inp["m_reps"])
+            m_reps = Int(inp["m_reps"])
             @test length(y_1) == n_groups * m_reps
             @test length(y_2) == n_groups * m_reps
 
@@ -89,22 +89,32 @@ end
             # Latent layout: x = [β_1, β_2, b_1[1..n], b_2[1..n]].
             # Length = 2 + 2n. Build the (2 N_per_dim) × (2 + 2n) projector A.
             n_lat = 2 + 2n
-            Is = Int[]; Js = Int[]; Vs = Float64[]
+            Is = Int[]
+            Js = Int[]
+            Vs = Float64[]
             sizehint!(Is, 4 * N_per_dim)
             sizehint!(Js, 4 * N_per_dim)
             sizehint!(Vs, 4 * N_per_dim)
             # Dim-1 rows: y_1, picks (β_1, b_1[group_i]).
             for k in 1:N_per_dim
                 grp = (k - 1) ÷ m_reps + 1
-                push!(Is, k); push!(Js, 1);          push!(Vs, 1.0)  # β_1
-                push!(Is, k); push!(Js, 2 + grp);    push!(Vs, 1.0)  # b_1[grp]
+                push!(Is, k)
+                push!(Js, 1)
+                push!(Vs, 1.0)  # β_1
+                push!(Is, k)
+                push!(Js, 2 + grp)
+                push!(Vs, 1.0)  # b_1[grp]
             end
             # Dim-2 rows: y_2, picks (β_2, b_2[group_i]).
             for k in 1:N_per_dim
                 grp = (k - 1) ÷ m_reps + 1
                 row = N_per_dim + k
-                push!(Is, row); push!(Js, 2);            push!(Vs, 1.0) # β_2
-                push!(Is, row); push!(Js, 2 + n + grp);  push!(Vs, 1.0) # b_2[grp]
+                push!(Is, row)
+                push!(Js, 2)
+                push!(Vs, 1.0) # β_2
+                push!(Is, row)
+                push!(Js, 2 + n + grp)
+                push!(Vs, 1.0) # b_2[grp]
             end
             A = sparse(Is, Js, Vs, N_obs, n_lat)
             mapping = LinearProjector(A)
@@ -119,13 +129,13 @@ end
             model = LatentGaussianModel(
                 ℓ,
                 (Intercept(prec=1.0e-3, improper=false),
-                 Intercept(prec=1.0e-3, improper=false),
-                 IID2D(n)),
+                    Intercept(prec=1.0e-3, improper=false),
+                    IID2D(n)),
                 mapping)
 
             y = vcat(y_1, y_2)
             # dim(θ) = 4 (τ_y + τ_1 + τ_2 + ρ) → CCD via :auto.
-            res = inla(model, y; int_strategy = :auto)
+            res = inla(model, y; int_strategy=:auto)
 
             # --- Fixed effects ------------------------------------------------
             sf = fx["summary_fixed"]
@@ -139,9 +149,9 @@ end
             # --- Hyperparameters ----------------------------------------------
             sh = fx["summary_hyperpar"]
             τ_y_R = _row_iid2d(sh, "Precision for the Gaussian observations", "mean")
-            τ_1_R = _row_iid2d(sh, "Precision for idx (first component)",  "mean")
+            τ_1_R = _row_iid2d(sh, "Precision for idx (first component)", "mean")
             τ_2_R = _row_iid2d(sh, "Precision for idx (second component)", "mean")
-            ρ_R   = _row_iid2d(sh, "Rho for idx", "mean")
+            ρ_R = _row_iid2d(sh, "Rho for idx", "mean")
 
             # θ̂ ordering: likelihood hyperparams first, then component
             # hyperparams in component order. Intercepts are
@@ -153,7 +163,7 @@ end
             τ_y_J = exp(res.θ̂[1])
             τ_1_J = exp(res.θ̂[2])
             τ_2_J = exp(res.θ̂[3])
-            ρ_J   = tanh(res.θ̂[4])
+            ρ_J = tanh(res.θ̂[4])
 
             @test _rel_iid2d(τ_y_J, τ_y_R) < IID2D_TAU_REL_TOL
             @test _rel_iid2d(τ_1_J, τ_1_R) < IID2D_TAU_REL_TOL

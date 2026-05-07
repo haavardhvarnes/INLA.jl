@@ -15,7 +15,7 @@ using Random
     n = 30
     y = 0.4 .+ 0.5 .* randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 
@@ -39,7 +39,7 @@ end
     n = 30
     y = 0.4 .+ 0.5 .* randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
     res2 = refine_hyperposterior(res, model, y; n_grid=11, span=4.0)
@@ -60,7 +60,7 @@ end
     n = 30
     y = 0.4 .+ 0.5 .* randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 

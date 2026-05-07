@@ -16,7 +16,7 @@ using Statistics: mean, var
     n = 30
     y = 0.4 .+ 0.5 .* randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 
@@ -118,7 +118,7 @@ end
     n = 25
     y = randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 
@@ -131,7 +131,7 @@ end
     n = 20
     y = randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 
@@ -153,7 +153,7 @@ end
     n = 30
     y = 0.4 .+ 0.5 .* randn(rng, n)
     ℓ = GaussianLikelihood()
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 

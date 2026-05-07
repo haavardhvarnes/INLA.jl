@@ -17,95 +17,95 @@
     # --- single-block components (length == n_levels) -----------------
 
     @testset "IID(5)" begin
-        df = (y = randn(rng, n), idx = rand(rng, 1:5, n))
+        df = (y=randn(rng, n), idx=rand(rng, 1:5, n))
         comp = IID(5)
         A_block = sparse(1:n, df.idx, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(idx, IID(5)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(idx, IID(5)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "RW1(8)" begin
-        df = (y = randn(rng, n), t = rand(rng, 1:8, n))
+        df = (y=randn(rng, n), t=rand(rng, 1:8, n))
         comp = RW1(8)
         A_block = sparse(1:n, df.t, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(t, RW1(8)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(t, RW1(8)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "RW2(10)" begin
-        df = (y = randn(rng, n), t = rand(rng, 1:10, n))
+        df = (y=randn(rng, n), t=rand(rng, 1:10, n))
         comp = RW2(10)
         A_block = sparse(1:n, df.t, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(t, RW2(10)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(t, RW2(10)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "AR1(6)" begin
-        df = (y = randn(rng, n), t = rand(rng, 1:6, n))
+        df = (y=randn(rng, n), t=rand(rng, 1:6, n))
         comp = AR1(6)
         A_block = sparse(1:n, df.t, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(t, AR1(6)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(t, AR1(6)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "Seasonal(12; period=4)" begin
-        df = (y = randn(rng, n), m = rand(rng, 1:12, n))
+        df = (y=randn(rng, n), m=rand(rng, 1:12, n))
         comp = Seasonal(12; period=4)
         A_block = sparse(1:n, df.m, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(m, Seasonal(12; period=4)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(m, Seasonal(12; period=4)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "Besag(W) on 4-node graph" begin
         W = sparse(Float64[0 1 0 0; 1 0 1 0; 0 1 0 1; 0 0 1 0])
-        df = (y = randn(rng, n), region = rand(rng, 1:4, n))
+        df = (y=randn(rng, n), region=rand(rng, 1:4, n))
         comp = Besag(W)
         A_block = sparse(1:n, df.region, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(region, Besag(W)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(region, Besag(W)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "Leroux(W) on 4-node graph" begin
         W = sparse(Float64[0 1 0 0; 1 0 1 0; 0 1 0 1; 0 0 1 0])
-        df = (y = randn(rng, n), region = rand(rng, 1:4, n))
+        df = (y=randn(rng, n), region=rand(rng, 1:4, n))
         comp = Leroux(W)
         A_block = sparse(1:n, df.region, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(region, Leroux(W)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(region, Leroux(W)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "Generic0(R)" begin
         R = sparse(Float64[2 -1 0; -1 2 -1; 0 -1 2])
-        df = (y = randn(rng, n), idx = rand(rng, 1:3, n))
+        df = (y=randn(rng, n), idx=rand(rng, 1:3, n))
         comp = Generic0(R)
         A_block = sparse(1:n, df.idx, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(idx, Generic0(R)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(idx, Generic0(R)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "Generic1(R)" begin
         R = sparse(Float64[2 -1 0; -1 2 -1; 0 -1 2])
-        df = (y = randn(rng, n), idx = rand(rng, 1:3, n))
+        df = (y=randn(rng, n), idx=rand(rng, 1:3, n))
         comp = Generic1(R)
         A_block = sparse(1:n, df.idx, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(idx, Generic1(R)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(idx, Generic1(R)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
@@ -115,53 +115,53 @@
 
     @testset "BYM(W) — length 2n, idx in 1:n" begin
         W = sparse(Float64[0 1 0 0; 1 0 1 0; 0 1 0 1; 0 0 1 0])
-        df = (y = randn(rng, n), region = rand(rng, 1:4, n))
+        df = (y=randn(rng, n), region=rand(rng, 1:4, n))
         comp = BYM(W)
         A_block = sparse(1:n, df.region, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(region, BYM(W)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(region, BYM(W)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "BYM2(W) — length 2n, idx in 1:n" begin
         W = sparse(Float64[0 1 0 0; 1 0 1 0; 0 1 0 1; 0 0 1 0])
-        df = (y = randn(rng, n), region = rand(rng, 1:4, n))
+        df = (y=randn(rng, n), region=rand(rng, 1:4, n))
         comp = BYM2(W)
         A_block = sparse(1:n, df.region, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(region, BYM2(W)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(region, BYM2(W)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "Generic2(C) — length 2n, idx in 1:n" begin
         C = sparse(Float64[2 -1 0; -1 2 -1; 0 -1 2])
-        df = (y = randn(rng, n), idx = rand(rng, 1:3, n))
+        df = (y=randn(rng, n), idx=rand(rng, 1:3, n))
         comp = Generic2(C)
         A_block = sparse(1:n, df.idx, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(idx, Generic2(C)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(idx, Generic2(C)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "IID2D(5) — length 2n, idx in 1:n" begin
-        df = (y = randn(rng, n), pair = rand(rng, 1:5, n))
+        df = (y=randn(rng, n), pair=rand(rng, 1:5, n))
         comp = IID2D(5)
         A_block = sparse(1:n, df.pair, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(pair, IID2D(5)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(pair, IID2D(5)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
 
     @testset "IID3D(4) — length 3n, idx in 1:n" begin
-        df = (y = randn(rng, n), triple = rand(rng, 1:4, n))
+        df = (y=randn(rng, n), triple=rand(rng, 1:4, n))
         comp = IID3D(4)
         A_block = sparse(1:n, df.triple, 1.0, n, length(comp))
         A = hcat(sparse(ones(n, 1)), A_block)
-        model_macro = @lgm y ~ 1 + f(triple, IID3D(4)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~1 + f(triple, IID3D(4)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (Intercept(), comp), A)
         @test _struct_isequal(model_macro, model_hand)
     end
@@ -169,10 +169,10 @@
     # --- intercept-suppressed combinations ----------------------------
 
     @testset "no intercept + RW1" begin
-        df = (y = randn(rng, n), t = rand(rng, 1:5, n))
+        df = (y=randn(rng, n), t=rand(rng, 1:5, n))
         comp = RW1(5)
         A = sparse(1:n, df.t, 1.0, n, length(comp))
-        model_macro = @lgm y ~ 0 + f(t, RW1(5)) data=df family=GaussianLikelihood()
+        model_macro = @lgm y~0 + f(t, RW1(5)) data=df family=GaussianLikelihood()
         model_hand = LatentGaussianModel(GaussianLikelihood(), (comp,), A)
         @test _struct_isequal(model_macro, model_hand)
     end

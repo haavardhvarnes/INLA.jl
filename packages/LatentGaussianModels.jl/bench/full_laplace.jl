@@ -40,7 +40,7 @@ function _build_model(rng::AbstractRNG, n::Integer)
 
     E = fill(2.0, n)
     y = rand(rng, Poisson(2.5), n)
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(PoissonLikelihood(; E=E),
         (Intercept(), g0), A)
     return model, y

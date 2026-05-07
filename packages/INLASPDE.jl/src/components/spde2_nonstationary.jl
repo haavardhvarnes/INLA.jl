@@ -64,10 +64,10 @@ spde = SPDE2NonStationary(mesh.points, mesh.triangles;
 ```
 """
 struct SPDE2NonStationary{α, T,
-        FE <: FEMMatrices{T},
-        G <: GMRFs.AbstractGMRFGraph,
-        PR <: GaussianBasisPrior,
-        M} <: AbstractLatentComponent
+    FE <: FEMMatrices{T},
+    G <: GMRFs.AbstractGMRFGraph,
+    PR <: GaussianBasisPrior,
+    M} <: AbstractLatentComponent
     fem::FE
     graph::G
     B_τ::Matrix{T}

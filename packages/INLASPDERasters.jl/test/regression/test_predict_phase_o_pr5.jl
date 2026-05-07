@@ -89,7 +89,7 @@ end
                 component=2, quantity=q)
             r_manual = predict_raster(
                 getfield(re["SPDE2NonStationary[2]"], q), mesh, template)
-            @test parent(r_model) ≈ parent(r_manual) rtol=1e-12
+            @test parent(r_model)≈parent(r_manual) rtol=1e-12
         end
     end
 
@@ -99,8 +99,8 @@ end
             component="SPDE2NonStationary[2]")
         r_typ = predict_raster(model, res, template;
             component=SPDE2NonStationary)
-        @test parent(r_int) ≈ parent(r_str) rtol=1e-12
-        @test parent(r_str) ≈ parent(r_typ) rtol=1e-12
+        @test parent(r_int)≈parent(r_str) rtol=1e-12
+        @test parent(r_str)≈parent(r_typ) rtol=1e-12
     end
 
     @testset "raw-constructor SPDE2NonStationary errors at predict_raster" begin
@@ -172,7 +172,7 @@ end
                 r_model = predict_raster(model, res, template;
                     component=2, quantity=q, time_index=k)
                 r_manual = predict_raster(full_vec[k:n_t:end], mesh, template)
-                @test parent(r_model) ≈ parent(r_manual) rtol=1e-12
+                @test parent(r_model)≈parent(r_manual) rtol=1e-12
             end
         end
     end
@@ -184,8 +184,8 @@ end
             component="KroneckerComponent[2]", time_index=1)
         r_typ = predict_raster(model, res, template;
             component=KroneckerComponent, time_index=1)
-        @test parent(r_int) ≈ parent(r_str) rtol=1e-12
-        @test parent(r_str) ≈ parent(r_typ) rtol=1e-12
+        @test parent(r_int)≈parent(r_str) rtol=1e-12
+        @test parent(r_str)≈parent(r_typ) rtol=1e-12
     end
 
     @testset "missing time_index errors with helpful message" begin

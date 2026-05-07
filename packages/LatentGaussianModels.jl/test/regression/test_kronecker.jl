@@ -52,7 +52,7 @@ end
     Q_s = precision_matrix(space, θ[1:2])
     Q_t = precision_matrix(time, θ[3:4])
     @test size(Q) == (6 * 5, 6 * 5)
-    @test Matrix(Q) ≈ kron(Matrix(Q_s), Matrix(Q_t)) rtol = 1.0e-12
+    @test Matrix(Q)≈kron(Matrix(Q_s), Matrix(Q_t)) rtol=1.0e-12
     @test issymmetric(Q)
 end
 
@@ -66,7 +66,7 @@ end
         Q = precision_matrix(c, θ)
         expected = -0.5 * length(c) * log(2π) +
                    0.5 * logdet(Symmetric(Matrix(Q)))
-        @test log_normalizing_constant(c, θ) ≈ expected rtol = 1.0e-10
+        @test log_normalizing_constant(c, θ)≈expected rtol=1.0e-10
     end
 end
 
@@ -111,7 +111,7 @@ end
     # IID time component contributes a diagonal block per spatial slot.
     Q_s = precision_matrix(space, θ[1:2])
     Q_t = precision_matrix(time, θ[3:3])
-    @test Matrix(Q) ≈ kron(Matrix(Q_s), Matrix(Q_t)) rtol = 1.0e-12
+    @test Matrix(Q)≈kron(Matrix(Q_s), Matrix(Q_t)) rtol=1.0e-12
 end
 
 @testset "KroneckerComponent — intrinsic spatial child lifts constraint via kron" begin
@@ -140,7 +140,7 @@ end
     expected = kron(Float64.(A_space), Matrix{Float64}(I, n_t, n_t))
     @test A ≈ expected
     @test constraint_rhs(kc) ==
-          repeat(Float64.(constraint_rhs(GMRFs.constraints(space))), inner = n_t)
+          repeat(Float64.(constraint_rhs(GMRFs.constraints(space))), inner=n_t)
 end
 
 @testset "KroneckerComponent — intrinsic temporal child lifts via kron" begin
@@ -228,7 +228,7 @@ end
     # τ_y = exp(0) = 1; Q_x at θ=0 is identity-shaped.
     Q_x = precision_matrix(c, zeros(4))
     expected = (Matrix{Float64}(I, N, N) + Matrix(Q_x)) \ y
-    @test res.mode ≈ expected atol = 1.0e-8
+    @test res.mode≈expected atol=1.0e-8
 end
 
 @testset "KroneckerComponent — INLA smoke fit (Gaussian, AR1 ⊗ AR1)" begin

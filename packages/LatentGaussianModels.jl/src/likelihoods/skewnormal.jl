@@ -83,10 +83,10 @@ end
 end
 
 # Numerically stable log-CDF and inverse Mills ratio for the standard normal.
-@inline _stdnormal_logcdf(t) =
-    Distributions.logcdf(Distributions.Normal(zero(t), one(t)), t)
-@inline _stdnormal_logpdf(t) =
-    Distributions.logpdf(Distributions.Normal(zero(t), one(t)), t)
+@inline _stdnormal_logcdf(t) = Distributions.logcdf(
+    Distributions.Normal(zero(t), one(t)), t)
+@inline _stdnormal_logpdf(t) = Distributions.logpdf(
+    Distributions.Normal(zero(t), one(t)), t)
 @inline _stdnormal_λ(t) = exp(_stdnormal_logpdf(t) - _stdnormal_logcdf(t))
 
 # --- identity-link closed forms ---------------------------------------

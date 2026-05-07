@@ -83,8 +83,12 @@ function MeshProjector1D(
         λ_right = (x_clamped - x_left) / h
         λ_left = one(T) - λ_right
 
-        push!(Is, i); push!(Js, k);     push!(Vs, λ_left)
-        push!(Is, i); push!(Js, k + 1); push!(Vs, λ_right)
+        push!(Is, i)
+        push!(Js, k)
+        push!(Vs, λ_left)
+        push!(Is, i)
+        push!(Js, k + 1)
+        push!(Vs, λ_right)
     end
 
     A = sparse(Is, Js, Vs, n_obs, n_v)

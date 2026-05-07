@@ -69,15 +69,16 @@ function IIDND(n::Integer, N::Integer=2;
         hyperprior_corrs::Union{Nothing, NTuple}=nothing)
     n > 0 || throw(ArgumentError("IIDND: n must be positive"))
     N ≥ 2 || throw(ArgumentError("IIDND: N must be ≥ 2"))
-    N ≤ 3 || throw(ArgumentError("IIDND: N ≥ 4 deferred to a successor ADR per ADR-022 — separable form caps at N = 3"))
+    N ≤ 3 ||
+        throw(ArgumentError("IIDND: N ≥ 4 deferred to a successor ADR per ADR-022 — separable form caps at N = 3"))
 
     if hyperprior_corr !== nothing && hyperprior_corrs !== nothing
         throw(ArgumentError("IIDND: pass exactly one of `hyperprior_corr` (N=2) or `hyperprior_corrs` (N≥3)"))
     end
 
     pps = hyperprior_precs === nothing ?
-        ntuple(_ -> PCPrecision(), N) :
-        hyperprior_precs
+          ntuple(_ -> PCPrecision(), N) :
+          hyperprior_precs
     length(pps) == N ||
         throw(ArgumentError("IIDND: hyperprior_precs must have length $N, got $(length(pps))"))
     all(p -> p isa AbstractHyperPrior, pps) ||
@@ -134,7 +135,8 @@ R-INLA's defaults exactly. Per ADR-022, the Wishart alternative lands
 in PR-1c.
 """
 function IID3D(n::Integer;
-        hyperprior_precs::NTuple{3, AbstractHyperPrior}=(PCPrecision(), PCPrecision(), PCPrecision()),
+        hyperprior_precs::NTuple{3, AbstractHyperPrior}=(
+            PCPrecision(), PCPrecision(), PCPrecision()),
         hyperprior_corrs::NTuple{3, AbstractHyperPrior}=(PCCor0(), PCCor0(), PCCor0()))
     return IIDND(n, 3;
         hyperprior_precs=hyperprior_precs,
@@ -145,8 +147,7 @@ Base.length(c::IIDND_Sep{N}) where {N} = c.n * N
 
 nhyperparameters(::IIDND_Sep{N}) where {N} = N + N * (N - 1) ÷ 2
 
-initial_hyperparameters(c::IIDND_Sep{N}) where {N} =
-    zeros(Float64, nhyperparameters(c))
+initial_hyperparameters(c::IIDND_Sep{N}) where {N} = zeros(Float64, nhyperparameters(c))
 
 GMRFs.constraints(::IIDND_Sep) = NoConstraint()
 
@@ -184,7 +185,7 @@ function precision_matrix(c::IIDND_Sep{2}, θ)
     τ2 = exp(θ[2])
     Λ11, Λ12, Λ22 = _iid2d_lambda(τ1, τ2, θ[3])
     diag_main = vcat(fill(Λ11, n), fill(Λ22, n))
-    off_diag  = fill(Λ12, n)
+    off_diag = fill(Λ12, n)
     return spdiagm(0 => diag_main, n => off_diag, -n => off_diag)
 end
 
@@ -237,9 +238,12 @@ function _iid3d_lambda(τ1, τ2, τ3, a, b, c)
     s1 = sqrt(τ1)
     s2 = sqrt(τ2)
     s3 = sqrt(τ3)
-    ca = cosh(a); sha = sinh(a)
-    cb = cosh(b); shb = sinh(b)
-    cc = cosh(c); shc = sinh(c)
+    ca = cosh(a)
+    sha = sinh(a)
+    cb = cosh(b)
+    shb = sinh(b)
+    cc = cosh(c)
+    shc = sinh(c)
     # G = L^{-1} D_τ^{1/2}; Λ = G' G via columnwise inner products.
     g11 = s1
     g21 = -s1 * sha
@@ -289,8 +293,9 @@ end
 function log_normalizing_constant(c::IIDND_Sep{3}, θ)
     n = c.n
     return -1.5 * n * log(2π) +
-           0.5 * n * (θ[1] + θ[2] + θ[3] +
-                      2 * (_logcosh(θ[4]) + _logcosh(θ[5]) + _logcosh(θ[6])))
+           0.5 * n *
+           (θ[1] + θ[2] + θ[3] +
+            2 * (_logcosh(θ[4]) + _logcosh(θ[5]) + _logcosh(θ[6])))
 end
 
 function gmrf(c::IIDND_Sep{3}, θ)

@@ -59,7 +59,7 @@ function fit(m::LatentGaussianModel, y, strategy::EmpiricalBayes)
     prob = Optimization.OptimizationProblem(optf, θ0, nothing)
     # See _θ_mode_and_hessian in inla.jl for the FD-gradient noise-floor
     # rationale; `g_tol = 1.0e-4` is the corresponding default here.
-    default_opts = (; g_tol = 1.0e-4)
+    default_opts = (; g_tol=1.0e-4)
     merged_opts = merge(default_opts, strategy.optim_options)
     opt_res = Optimization.solve(prob, OptimizationOptimJL.LBFGS();
         merged_opts...)

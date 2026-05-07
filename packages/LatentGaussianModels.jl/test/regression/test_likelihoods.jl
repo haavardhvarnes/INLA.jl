@@ -494,7 +494,8 @@ end
         # weights[i] = s_i acts as a multiplier on τ inside √(τ s).
         ℓ_w = GEVLikelihood(weights=fill(2.0, n))
         ℓ_τ2 = GEVLikelihood()
-        τ = exp(1.0); ξ = 0.05
+        τ = exp(1.0)
+        ξ = 0.05
         y = _gev_sample(rng, η, τ * 2.0, ξ)
         θ = [1.0, ξ / 0.1]
         θ_doubled = [1.0 + log(2.0), ξ / 0.1]
@@ -574,8 +575,8 @@ end
         # Three (θ_1, log Δ_2, log Δ_3) interior points, with cut
         # points α covering both negative and positive ranges.
         for θ in ([-1.0, log(0.7), log(1.3)],
-                  [0.2, log(1.1), log(0.9)],
-                  [-0.5, log(0.5), log(2.0)])
+            [0.2, log(1.1), log(0.9)],
+            [-0.5, log(0.5), log(2.0)])
             α = [θ[1], θ[1] + exp(θ[2]), θ[1] + exp(θ[2]) + exp(θ[3])]
             # Ensure all four classes are populated by drawing twice as
             # many samples and trimming, then forcing extreme classes

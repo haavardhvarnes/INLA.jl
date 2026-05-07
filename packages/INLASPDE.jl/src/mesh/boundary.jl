@@ -180,7 +180,8 @@ end
 # squared form avoids one sqrt and lets the comparison `r² ≤ α²` stay
 # numerically clean. Formula: R = a·b·c / (4·area), so
 # R² = (a²·b²·c²) / (16·area²).
-function _circumradius_sq(a::NTuple{2, Float64}, b::NTuple{2, Float64}, c::NTuple{2, Float64})
+function _circumradius_sq(
+        a::NTuple{2, Float64}, b::NTuple{2, Float64}, c::NTuple{2, Float64})
     ab2 = (a[1] - b[1])^2 + (a[2] - b[2])^2
     bc2 = (b[1] - c[1])^2 + (b[2] - c[2])^2
     ca2 = (c[1] - a[1])^2 + (c[2] - a[2])^2

@@ -6,11 +6,11 @@
 @testset "PR-1 error messages refer to user concepts" begin
     rng = Random.Xoshiro(20260505)
     n = 20
-    df = (y = randn(rng, n), x = randn(rng, n), idx = rand(rng, 1:3, n))
+    df = (y=randn(rng, n), x=randn(rng, n), idx=rand(rng, 1:3, n))
 
     @testset "missing data kwarg" begin
         ex = try
-            @eval @lgm y ~ 1 family=GaussianLikelihood()
+            @eval @lgm y~1 family=GaussianLikelihood()
             nothing
         catch e
             e
@@ -22,7 +22,7 @@
 
     @testset "missing family kwarg" begin
         ex = try
-            @eval @lgm y ~ 1 data=$df
+            @eval @lgm y~1 data=$df
             nothing
         catch e
             e
@@ -34,10 +34,10 @@
 
     @testset "unknown outcome column" begin
         @test_throws ArgumentError begin
-            @lgm not_a_col ~ 1 + x data=df family=GaussianLikelihood()
+            @lgm not_a_col~1 + x data=df family=GaussianLikelihood()
         end
         try
-            @lgm not_a_col ~ 1 + x data=df family=GaussianLikelihood()
+            @lgm not_a_col~1 + x data=df family=GaussianLikelihood()
         catch e
             msg = sprint(showerror, e)
             @test occursin("not_a_col", msg)
@@ -47,10 +47,10 @@
 
     @testset "unknown covariate column" begin
         @test_throws ArgumentError begin
-            @lgm y ~ 1 + missing_col data=df family=GaussianLikelihood()
+            @lgm y~1 + missing_col data=df family=GaussianLikelihood()
         end
         try
-            @lgm y ~ 1 + missing_col data=df family=GaussianLikelihood()
+            @lgm y~1 + missing_col data=df family=GaussianLikelihood()
         catch e
             msg = sprint(showerror, e)
             @test occursin("missing_col", msg)
@@ -59,10 +59,10 @@
 
     @testset "unknown f-term column" begin
         @test_throws ArgumentError begin
-            @lgm y ~ 1 + f(no_idx, IID(3)) data=df family=GaussianLikelihood()
+            @lgm y~1 + f(no_idx, IID(3)) data=df family=GaussianLikelihood()
         end
         try
-            @lgm y ~ 1 + f(no_idx, IID(3)) data=df family=GaussianLikelihood()
+            @lgm y~1 + f(no_idx, IID(3)) data=df family=GaussianLikelihood()
         catch e
             msg = sprint(showerror, e)
             @test occursin("no_idx", msg)
@@ -70,12 +70,12 @@
     end
 
     @testset "f-term level out of range" begin
-        bad_df = (y = randn(rng, n), idx = fill(99, n))
+        bad_df = (y=randn(rng, n), idx=fill(99, n))
         @test_throws ArgumentError begin
-            @lgm y ~ 1 + f(idx, IID(3)) data=bad_df family=GaussianLikelihood()
+            @lgm y~1 + f(idx, IID(3)) data=bad_df family=GaussianLikelihood()
         end
         try
-            @lgm y ~ 1 + f(idx, IID(3)) data=bad_df family=GaussianLikelihood()
+            @lgm y~1 + f(idx, IID(3)) data=bad_df family=GaussianLikelihood()
         catch e
             msg = sprint(showerror, e)
             @test occursin("idx", msg)

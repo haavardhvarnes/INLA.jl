@@ -183,8 +183,10 @@ function _two_region_max_edges(mesh::INLAMesh, inner_poly)
         inside = true
         for ii in 1:n
             jj = ii == n ? 1 : ii + 1
-            ax = inner_poly[ii, 1]; ay = inner_poly[ii, 2]
-            bx = inner_poly[jj, 1]; by = inner_poly[jj, 2]
+            ax = inner_poly[ii, 1]
+            ay = inner_poly[ii, 2]
+            bx = inner_poly[jj, 1]
+            by = inner_poly[jj, 2]
             cross = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
             if cross <= 0
                 inside = false

@@ -15,9 +15,8 @@ using Test
 # workflow runs `Pkg.develop` on `INLASPDE` before invoking
 # `Pkg.test(test_args=["--triangulation"])`, so the dev-link is
 # discoverable via `Base.find_package` at that point.
-const RUN_FULL_TRIANGULATION =
-    ("--triangulation" in ARGS) ||
-    get(ENV, "LGMTURING_TRIANGULATION", "0") == "1"
+const RUN_FULL_TRIANGULATION = ("--triangulation" in ARGS) ||
+                               get(ENV, "LGMTURING_TRIANGULATION", "0") == "1"
 
 @testset "LGMTuring.jl" begin
     @testset "regression" begin

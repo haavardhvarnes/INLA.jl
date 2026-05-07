@@ -46,15 +46,15 @@ end
     @test issymmetric(Q)
 
     # Reference Λ from the closed-form inverse of the 2×2 covariance.
-    σ2 = [1/τ1            ρ / sqrt(τ1*τ2);
-          ρ/sqrt(τ1*τ2)   1/τ2]
+    σ2 = [1/τ1 ρ/sqrt(τ1 * τ2);
+          ρ/sqrt(τ1 * τ2) 1/τ2]
     Λ = inv(σ2)
     Qref = kron(Λ, Matrix(1.0I, n, n))
     @test Matrix(Q) ≈ Qref
 
     # det(Q) = det(Λ)^n = (τ_1 τ_2 / (1 - ρ²))^n
     expected_logdet = n * (log(τ1) + log(τ2) - log1p(-ρ^2))
-    @test logdet(Matrix(Q)) ≈ expected_logdet rtol=1.0e-10
+    @test logdet(Matrix(Q))≈expected_logdet rtol=1.0e-10
 end
 
 @testset "IID2D — independence limit (ρ = 0)" begin
@@ -72,13 +72,13 @@ end
     n = 6
     c = IID2D(n)
     for (τ1, τ2, ρ) in ((1.0, 1.0, 0.0),
-                       (2.0, 0.5, 0.3),
-                       (4.0, 4.0, -0.7))
+        (2.0, 0.5, 0.3),
+        (4.0, 4.0, -0.7))
         θ = [log(τ1), log(τ2), atanh(ρ)]
         Q = precision_matrix(c, θ)
         d = 2n
         expected = -0.5 * d * log(2π) + 0.5 * logdet(Matrix(Q))
-        @test log_normalizing_constant(c, θ) ≈ expected rtol=1.0e-10
+        @test log_normalizing_constant(c, θ)≈expected rtol=1.0e-10
     end
 end
 
@@ -90,10 +90,9 @@ end
     θ = [0.3, -0.2, 0.5]
 
     # Manual sum
-    expected =
-        log_prior_density(c.precpriors[1], θ[1]) +
-        log_prior_density(c.precpriors[2], θ[2]) +
-        log_prior_density(c.corrpriors[1], θ[3])
+    expected = log_prior_density(c.precpriors[1], θ[1]) +
+               log_prior_density(c.precpriors[2], θ[2]) +
+               log_prior_density(c.corrpriors[1], θ[3])
     @test log_hyperprior(c, θ) ≈ expected
 end
 
@@ -162,13 +161,13 @@ end
     Σ = D_inv_half * R * D_inv_half
     Λ = inv(Σ)
     Qref = kron(Λ, Matrix(1.0I, n, n))
-    @test Matrix(Q) ≈ Qref rtol=1.0e-12
+    @test Matrix(Q)≈Qref rtol=1.0e-12
 
     # det Λ = τ_1 τ_2 τ_3 / det R, and det R = (1 - z21²)(1 - z31²)(1 - z32²)
     # under LKJ stick-breaking. log det Q = n · log det Λ.
     expected_logdet = n * (log(τ[1]) + log(τ[2]) + log(τ[3]) -
-                           log1p(-z[1]^2) - log1p(-z[2]^2) - log1p(-z[3]^2))
-    @test logdet(Matrix(Q)) ≈ expected_logdet rtol=1.0e-10
+                       log1p(-z[1]^2) - log1p(-z[2]^2) - log1p(-z[3]^2))
+    @test logdet(Matrix(Q))≈expected_logdet rtol=1.0e-10
 end
 
 @testset "IID3D — independence limit (all CPCs = 0)" begin
@@ -201,26 +200,26 @@ end
     n = 5
     c = IID3D(n)
     for (τ1, τ2, τ3, z21, z31, z32) in (
-            (1.0, 1.0, 1.0, 0.0, 0.0, 0.0),
-            (2.0, 0.5, 1.5, 0.3, -0.2, 0.1),
-            (4.0, 0.25, 9.0, -0.6, 0.5, -0.3))
+        (1.0, 1.0, 1.0, 0.0, 0.0, 0.0),
+        (2.0, 0.5, 1.5, 0.3, -0.2, 0.1),
+        (4.0, 0.25, 9.0, -0.6, 0.5, -0.3))
         θ = [log(τ1), log(τ2), log(τ3),
             atanh(z21), atanh(z31), atanh(z32)]
         Q = precision_matrix(c, θ)
         d = 3n
         expected = -0.5 * d * log(2π) + 0.5 * logdet(Matrix(Q))
-        @test log_normalizing_constant(c, θ) ≈ expected rtol=1.0e-10
+        @test log_normalizing_constant(c, θ)≈expected rtol=1.0e-10
     end
 end
 
 @testset "IID3D — log_hyperprior is the sum of six priors" begin
     c = IID3D(4;
         hyperprior_precs=(PCPrecision(1.0, 0.01),
-                          PCPrecision(2.0, 0.05),
-                          PCPrecision(0.5, 0.10)),
+            PCPrecision(2.0, 0.05),
+            PCPrecision(0.5, 0.10)),
         hyperprior_corrs=(PCCor0(0.3, 0.5),
-                          PCCor0(0.5, 0.5),
-                          PCCor0(0.7, 0.3)))
+            PCCor0(0.5, 0.5),
+            PCCor0(0.7, 0.3)))
     θ = [0.3, -0.2, 0.1, 0.4, -0.5, 0.2]
     expected = sum(log_prior_density(c.precpriors[k], θ[k]) for k in 1:3) +
                sum(log_prior_density(c.corrpriors[k], θ[3 + k]) for k in 1:3)

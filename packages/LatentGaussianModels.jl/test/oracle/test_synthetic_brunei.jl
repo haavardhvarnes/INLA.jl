@@ -104,7 +104,7 @@ end
                 constraint=constraint,
                 hyperprior=GammaPrecision(100.0, 100.0))
             ℓ = PoissonLikelihood(; E=E)
-            A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+            A = sparse([ones(n) Matrix{Float64}(I, n,n)])
             model = LatentGaussianModel(ℓ, (Intercept(), g0), A)
 
             res = inla(model, y; int_strategy=:grid)

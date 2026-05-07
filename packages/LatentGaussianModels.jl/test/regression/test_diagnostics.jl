@@ -4,7 +4,8 @@ using LatentGaussianModels: PoissonLikelihood, GaussianLikelihood,
                             PCPrecision,
                             pointwise_log_density, pointwise_cdf, posterior_samples_η,
                             posterior_sample,
-                            dic, waic, cpo, pit, log_density, fixed_effects, hyperparameters,
+                            dic, waic, cpo, pit, log_density, fixed_effects,
+                            hyperparameters,
                             n_hyperparameters, n_latent
 using Distributions: Normal, Poisson, Binomial
 using Distributions
@@ -103,7 +104,7 @@ end
     # matrix.
     rng = Random.Xoshiro(7)
     n = 80
-    X = [ones(n)  randn(rng, n)]
+    X = [ones(n) randn(rng, n)]
     β_true = [0.3, -0.5]
     y = [rand(rng, Poisson(exp(X[i, :] ⋅ β_true))) for i in 1:n]
 

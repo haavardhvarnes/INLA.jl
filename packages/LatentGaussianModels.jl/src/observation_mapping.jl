@@ -310,7 +310,7 @@ function apply!(η::AbstractVector, m::KroneckerMapping, x::AbstractVector)
         throw(DimensionMismatch("η has length $(length(η)); KroneckerMapping expects $(nrows(m))"))
 
     nC_s, nR_s = ncols(m.A_space), nrows(m.A_space)
-    nC_t, nR_t = ncols(m.A_time),  nrows(m.A_time)
+    nC_t, nR_t = ncols(m.A_time), nrows(m.A_time)
 
     X = reshape(x, nC_t, nC_s)
     Y = reshape(η, nR_t, nR_s)
@@ -334,7 +334,7 @@ function apply_adjoint!(g::AbstractVector, m::KroneckerMapping, r::AbstractVecto
         throw(DimensionMismatch("g has length $(length(g)); KroneckerMapping expects $(ncols(m))"))
 
     nC_s, nR_s = ncols(m.A_space), nrows(m.A_space)
-    nC_t, nR_t = ncols(m.A_time),  nrows(m.A_time)
+    nC_t, nR_t = ncols(m.A_time), nrows(m.A_time)
 
     R = reshape(r, nR_t, nR_s)
     G = reshape(g, nC_t, nC_s)

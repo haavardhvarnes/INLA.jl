@@ -85,13 +85,13 @@ end
             # but Grid is the safe fallback for 3D and R-INLA also
             # defaults to the integration scheme that matches small-θ
             # hypercubes here).
-            res = inla(model, y; int_strategy = :auto)
+            res = inla(model, y; int_strategy=:auto)
 
             # --- Hyperparameters: mode-vs-mode ---------------------------------
             sh = fx["summary_hyperpar"]
             τ_y_R = _row_repl_ar1(sh, "Precision for the Gaussian observations", "mode")
             τ_x_R = _row_repl_ar1(sh, "Precision for t_idx", "mode")
-            ρ_R   = _row_repl_ar1(sh, "Rho for t_idx", "mode")
+            ρ_R = _row_repl_ar1(sh, "Rho for t_idx", "mode")
 
             # θ̂ ordering: likelihood hyperparams first, then component
             # hyperparams in component order:
@@ -100,7 +100,7 @@ end
             #   θ̂[3] = atanh ρ  (AR1 correlation, shared across replicates)
             τ_y_J = exp(res.θ̂[1])
             τ_x_J = exp(res.θ̂[2])
-            ρ_J   = tanh(res.θ̂[3])
+            ρ_J = tanh(res.θ̂[3])
 
             @test _rel_repl_ar1(τ_y_J, τ_y_R) < REPL_AR1_TAU_Y_REL_TOL
             @test _rel_repl_ar1(τ_x_J, τ_x_R) < REPL_AR1_TAU_X_REL_TOL

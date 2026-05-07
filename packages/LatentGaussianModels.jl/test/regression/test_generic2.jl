@@ -27,9 +27,9 @@ import GMRFs
     Qd = Matrix(Q)
     I_n = Matrix(I, n, n)
     @test Qd[1:n, 1:n] ≈ τu .* I_n
-    @test Qd[1:n, (n + 1):2n] ≈ -τu .* I_n
-    @test Qd[(n + 1):2n, 1:n] ≈ -τu .* I_n
-    @test Qd[(n + 1):2n, (n + 1):2n] ≈ τu .* I_n .+ τv .* Matrix(C)
+    @test Qd[1:n, (n + 1):(2n)] ≈ -τu .* I_n
+    @test Qd[(n + 1):(2n), 1:n] ≈ -τu .* I_n
+    @test Qd[(n + 1):(2n), (n + 1):(2n)] ≈ τu .* I_n .+ τv .* Matrix(C)
     @test issymmetric(Qd)
 
     @test constraints(c) isa NoConstraint
@@ -63,7 +63,7 @@ end
                 0.0 0.0 -1.0 2.0 -1.0;
                 0.0 0.0 0.0 -1.0 1.0])
     Aeq = zeros(1, 2n)
-    Aeq[1, (n + 1):2n] .= 1.0  # sum-to-zero on the v block
+    Aeq[1, (n + 1):(2n)] .= 1.0  # sum-to-zero on the v block
     e = zeros(1)
     c = Generic2(C; rankdef=1, constraint=LinearConstraint(Aeq, e))
 
@@ -98,7 +98,7 @@ end
     θ = [0.0, -50.0]   # τv = 1, τu ≈ 0
     Q = Matrix(precision_matrix(c_scaled, θ))
     τu = exp(θ[2])
-    D_block = Q[(n + 1):2n, (n + 1):2n]
+    D_block = Q[(n + 1):(2n), (n + 1):(2n)]
     @test D_block ≈ τu .* Matrix(I, n, n) .+ Matrix(c_scaled.C)
 end
 

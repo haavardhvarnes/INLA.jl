@@ -36,7 +36,7 @@ end
     apply!(η, m, x)
 
     expected = as_matrix(m) * x
-    @test η ≈ expected atol = 1.0e-12
+    @test η≈expected atol=1.0e-12
 end
 
 @testset "KroneckerMapping — apply_adjoint! matches as_matrix'" begin
@@ -50,7 +50,7 @@ end
     apply_adjoint!(g, m, r)
 
     expected = as_matrix(m)' * r
-    @test g ≈ expected atol = 1.0e-12
+    @test g≈expected atol=1.0e-12
 end
 
 @testset "KroneckerMapping — adjoint dot-product identity" begin
@@ -70,7 +70,7 @@ end
     apply!(η, m, x)
     apply_adjoint!(g, m, r)
 
-    @test dot(η, r) ≈ dot(x, g) atol = 1.0e-12
+    @test dot(η, r)≈dot(x, g) atol=1.0e-12
 end
 
 @testset "KroneckerMapping — identity factor short-circuit" begin
@@ -87,12 +87,12 @@ end
     x = randn(rng, ncols(m))
     η = similar(x, nrows(m))
     apply!(η, m, x)
-    @test η ≈ as_matrix(m) * x atol = 1.0e-12
+    @test η≈as_matrix(m) * x atol=1.0e-12
 
     r = randn(rng, nrows(m))
     g = similar(r, ncols(m))
     apply_adjoint!(g, m, r)
-    @test g ≈ as_matrix(m)' * r atol = 1.0e-12
+    @test g≈as_matrix(m)' * r atol=1.0e-12
 end
 
 @testset "KroneckerMapping — sparse factors" begin
@@ -101,18 +101,18 @@ end
     # small dense AR1 selector. Ensure the mixed-density case works.
     rng = MersenneTwister(15)
     A_sparse = sprandn(rng, 6, 4, 0.3)
-    A_dense  = randn(rng, 5, 3)
+    A_dense = randn(rng, 5, 3)
     m = KroneckerMapping(LinearProjector(A_sparse), LinearProjector(A_dense))
 
     x = randn(rng, ncols(m))
     η = similar(x, nrows(m))
     apply!(η, m, x)
-    @test η ≈ as_matrix(m) * x atol = 1.0e-12
+    @test η≈as_matrix(m) * x atol=1.0e-12
 
     r = randn(rng, nrows(m))
     g = similar(r, ncols(m))
     apply_adjoint!(g, m, r)
-    @test g ≈ as_matrix(m)' * r atol = 1.0e-12
+    @test g≈as_matrix(m)' * r atol=1.0e-12
 end
 
 @testset "KroneckerMapping — dimension errors" begin
@@ -154,14 +154,14 @@ end
 
     expected_top = as_matrix(K1) * x
     expected_bot = as_matrix(K2) * x
-    @test η[rows[1]] ≈ expected_top atol = 1.0e-12
-    @test η[rows[2]] ≈ expected_bot atol = 1.0e-12
+    @test η[rows[1]]≈expected_top atol=1.0e-12
+    @test η[rows[2]]≈expected_bot atol=1.0e-12
 
     r = randn(rng, nrows(stacked))
     g = similar(r, n_x)
     apply_adjoint!(g, stacked, r)
     expected_g = as_matrix(K1)' * r[rows[1]] + as_matrix(K2)' * r[rows[2]]
-    @test g ≈ expected_g atol = 1.0e-12
+    @test g≈expected_g atol=1.0e-12
 end
 
 @testset "KroneckerMapping — recursive Kronecker" begin
@@ -182,10 +182,10 @@ end
     x = randn(rng, ncols(outer))
     η = similar(x, nrows(outer))
     apply!(η, outer, x)
-    @test η ≈ as_matrix(outer) * x atol = 1.0e-12
+    @test η≈as_matrix(outer) * x atol=1.0e-12
 
     r = randn(rng, nrows(outer))
     g = similar(r, ncols(outer))
     apply_adjoint!(g, outer, r)
-    @test g ≈ as_matrix(outer)' * r atol = 1.0e-12
+    @test g≈as_matrix(outer)' * r atol=1.0e-12
 end

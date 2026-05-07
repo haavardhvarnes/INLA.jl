@@ -58,10 +58,10 @@ function LatentGaussianModels.psis_loo(rng::Random.AbstractRNG,
     elpd_loo = sum(elpd_loo_pw)
     p_loo = sum(p_loo_pw)
     return (elpd_loo=elpd_loo, looic=-2 * elpd_loo,
-            pointwise_elpd_loo=elpd_loo_pw,
-            pointwise_p_loo=p_loo_pw,
-            p_loo=p_loo,
-            pareto_k=pareto_k)
+        pointwise_elpd_loo=elpd_loo_pw,
+        pointwise_p_loo=p_loo_pw,
+        p_loo=p_loo,
+        pareto_k=pareto_k)
 end
 
 end # module

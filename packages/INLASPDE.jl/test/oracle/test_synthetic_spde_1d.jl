@@ -15,8 +15,8 @@
 using JLD2
 using SparseArrays
 using LatentGaussianModels:
-    LatentGaussianModel, GaussianLikelihood, PCPrecision,
-    Intercept, inla, fixed_effects, hyperparameters
+                            LatentGaussianModel, GaussianLikelihood, PCPrecision,
+                            Intercept, inla, fixed_effects, hyperparameters
 
 @testset "Synthetic 1D Matérn SPDE — posterior agreement with R-INLA" begin
     fxt = load(joinpath(@__DIR__, "fixtures", "synthetic_spde_1d.jld2"))["fixture"]
@@ -36,21 +36,21 @@ using LatentGaussianModels:
     # FEM matrices then match (up to floating-point) what R-INLA
     # assembled.
     segments = hcat(1:(n_v - 1), 2:n_v)
-    spde = SPDE1D(points, segments; α = 2,
-        pc = PCMatern{1}(
-            range_U = 0.5, range_α = 0.5,
-            sigma_U = 1.0, sigma_α = 0.5
+    spde = SPDE1D(points, segments; α=2,
+        pc=PCMatern{1}(
+            range_U=0.5, range_α=0.5,
+            sigma_U=1.0, sigma_α=0.5
         ))
 
     # R-INLA's `prec.intercept = 1e-3` is a *proper* N(0, 1000)
     # intercept; opt in via `improper = false` to match.
-    intercept = Intercept(prec = 1.0e-3, improper = false)
+    intercept = Intercept(prec=1.0e-3, improper=false)
 
     # Stack projector: x = [α, u(field)]
     A_intercept = ones(n_obs, 1)
     A = hcat(A_intercept, A_field)
 
-    like = GaussianLikelihood(hyperprior = PCPrecision(1.0, 0.01))
+    like = GaussianLikelihood(hyperprior=PCPrecision(1.0, 0.01))
     model = LatentGaussianModel(like, (intercept, spde), A)
 
     res = inla(model, y)

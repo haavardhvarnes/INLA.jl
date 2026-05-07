@@ -108,10 +108,10 @@ end
                 [1:n_long, (n_long + 1):(n_long + N)])
 
             ℓ_g = GaussianLikelihood()
-            ℓ_w_base = WeibullLikelihood(censoring = cens)
+            ℓ_w_base = WeibullLikelihood(censoring=cens)
             ℓ_w = CopyTargetLikelihood(
                 ℓ_w_base,
-                Copy(3:(2 + N); β_init = 1.0, fixed = false))
+                Copy(3:(2 + N); β_init=1.0, fixed=false))
             model = LatentGaussianModel(
                 (ℓ_g, ℓ_w),
                 (Intercept(), Intercept(), IID(N)),
@@ -121,7 +121,7 @@ end
             @test n_hyperparameters(model) == 4
 
             y = vcat(y_long, T_event)
-            res = inla(model, y; int_strategy = :grid)
+            res = inla(model, y; int_strategy=:grid)
 
             # --- Fixed effects: posterior mean + sd ----------------------
             sf = fx["summary_fixed"]

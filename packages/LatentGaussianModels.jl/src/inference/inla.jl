@@ -215,7 +215,7 @@ function _θ_mode_and_hessian(m::LatentGaussianModel, y, strategy::INLA)
     # √eps ≈ 1e-8, i.e. Optim.jl's default g_tol. LBFGS then exhausts the
     # 1000-iteration limit hunting noise. g_tol = 1e-4 cuts PA BYM2 from
     # 18 s → 0.36 s with Δθ̂ ≈ 1.7e-4 — well under oracle test tolerances.
-    default_opts = (; g_tol = 1.0e-4)
+    default_opts = (; g_tol=1.0e-4)
     merged_opts = merge(default_opts, strategy.optim_options)
     opt_res = Optimization.solve(prob, OptimizationOptimJL.LBFGS();
         merged_opts...)
@@ -405,17 +405,23 @@ end
 # `Gaussian` returns a zero shift; `SimplifiedLaplace` returns the
 # Rue-Martino correction. The caller is responsible for the broadcast
 # add against `lp.mode`.
-_integration_mean_shift(::Gaussian, lp::LaplaceResult,
-    m::LatentGaussianModel, y) = zero(lp.mode)
+function _integration_mean_shift(::Gaussian, lp::LaplaceResult,
+        m::LatentGaussianModel, y)
+    zero(lp.mode)
+end
 
-_integration_mean_shift(::SimplifiedLaplace, lp::LaplaceResult,
-    m::LatentGaussianModel, y) = _sla_mean_shift(lp, m, y)
+function _integration_mean_shift(::SimplifiedLaplace, lp::LaplaceResult,
+        m::LatentGaussianModel, y)
+    _sla_mean_shift(lp, m, y)
+end
 
 # `FullLaplace` (PR-3) only intercepts `posterior_marginal_x`; the
 # integration-stage summary stays Gaussian until PR-4 wires the
 # per-coordinate Laplace refit into `_inla_integrate`.
-_integration_mean_shift(::FullLaplace, lp::LaplaceResult,
-    m::LatentGaussianModel, y) = zero(lp.mode)
+function _integration_mean_shift(::FullLaplace, lp::LaplaceResult,
+        m::LatentGaussianModel, y)
+    zero(lp.mode)
+end
 
 # ---------------------------------------------------------------------
 # refine_hyperposterior — R-INLA `inla.hyperpar` equivalent

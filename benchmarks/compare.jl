@@ -7,9 +7,9 @@ following `<date>_<arch>.md` per `plans/quality-and-perf-benchmarks.md`.
 using Printf
 
 const DATASET_LABEL = Dict(
-    :scotland_bym2     => "Scotland BYM2",
+    :scotland_bym2 => "Scotland BYM2",
     :pennsylvania_bym2 => "Pennsylvania BYM2",
-    :meuse_spde        => "Meuse SPDE",
+    :meuse_spde => "Meuse SPDE"
 )
 
 """
@@ -27,10 +27,8 @@ function format_row(julia_row, r_row)
     r_iqr = r_row[:iqr_seconds]
     speedup = r_med / j_med  # > 1 means Julia faster
     mlik_gap_nats = abs(julia_row.mlik_julia - julia_row.mlik_R)
-    return @sprintf(
-        "| %-18s | %7.2fs ± %5.2fs | %7.2fs ± %5.2fs | %5.2fx | %.3f |",
-        label, j_med, j_iqr, r_med, r_iqr, speedup, mlik_gap_nats,
-    )
+    return @sprintf("| %-18s | %7.2fs ± %5.2fs | %7.2fs ± %5.2fs | %5.2fx | %.3f |",
+        label, j_med, j_iqr, r_med, r_iqr, speedup, mlik_gap_nats,)
 end
 
 """
@@ -41,7 +39,7 @@ isn't directly comparable to BenchmarkTools' allocator-byte counter.
 """
 function format_alloc_row(julia_row)
     label = DATASET_LABEL[julia_row.name]
-    mib   = julia_row.allocs_bytes / 2^20
+    mib = julia_row.allocs_bytes / 2^20
     return @sprintf("| %-18s | %8.1f MiB |", label, mib)
 end
 
@@ -63,7 +61,8 @@ function write_results(julia_rows, r_rows, header_meta; outpath::AbstractString)
         println(io, "- **Date.** $(header_meta.date)")
         println(io, "- **Hardware.** $(header_meta.hardware)")
         println(io, "- **OS.** $(header_meta.os)")
-        println(io, "- **BLAS threads.** $(header_meta.blas_threads) (single-threaded baseline)")
+        println(io,
+            "- **BLAS threads.** $(header_meta.blas_threads) (single-threaded baseline)")
         println(io, "- **Julia.** $(header_meta.julia_version)")
         println(io, "- **R.** $(header_meta.r_version)")
         println(io, "- **R-INLA.** $(header_meta.inla_version)")
@@ -74,28 +73,31 @@ function write_results(julia_rows, r_rows, header_meta; outpath::AbstractString)
         println(io)
         println(io, "## Wall-clock — single-threaded BLAS")
         println(io)
-        println(io, "Median over $(header_meta.n_samples) timed runs (first run discarded as warm-up). ",
-                    "IQR is the 25–75 percentile spread. ",
-                    "`Speedup` is R-INLA median / Julia median — values > 1 mean INLA.jl is faster.")
+        println(io,
+            "Median over $(header_meta.n_samples) timed runs (first run discarded as warm-up). ",
+            "IQR is the 25–75 percentile spread. ",
+            "`Speedup` is R-INLA median / Julia median — values > 1 mean INLA.jl is faster.")
         println(io)
-        println(io, "| Dataset            | INLA.jl median ± IQR | R-INLA median ± IQR  | Speedup | mlik gap (nats) |")
-        println(io, "|--------------------|---------------------:|---------------------:|--------:|----------------:|")
+        println(io,
+            "| Dataset            | INLA.jl median ± IQR | R-INLA median ± IQR  | Speedup | mlik gap (nats) |")
+        println(io,
+            "|--------------------|---------------------:|---------------------:|--------:|----------------:|")
         for (jr, rr) in zip(julia_rows, r_rows)
             println(io, format_row(jr, rr))
         end
         println(io)
         println(io, "The `mlik gap (nats)` column is the absolute difference between ",
-                    "INLA.jl's `log_marginal_likelihood(res)` and R-INLA's `fit\$mlik[1,1]` ",
-                    "from the run that fed the timing — same fixture, same priors, ",
-                    "single-figure agreement is expected.")
+            "INLA.jl's `log_marginal_likelihood(res)` and R-INLA's `fit\$mlik[1,1]` ",
+            "from the run that fed the timing — same fixture, same priors, ",
+            "single-figure agreement is expected.")
         println(io)
         println(io, "## Memory — INLA.jl Julia-side allocations")
         println(io)
         println(io, "Reported by `BenchmarkTools.@benchmark` (bytes allocated per fit, ",
-                    "minimum across the timed samples). R-INLA memory footprint isn't ",
-                    "reported here — `gc()` accounting in R doesn't admit a comparable ",
-                    "single-fit number, and R-INLA shells out to a C binary that lives ",
-                    "outside R's allocator.")
+            "minimum across the timed samples). R-INLA memory footprint isn't ",
+            "reported here — `gc()` accounting in R doesn't admit a comparable ",
+            "single-fit number, and R-INLA shells out to a C binary that lives ",
+            "outside R's allocator.")
         println(io)
         println(io, "| Dataset            | Per-fit bytes |")
         println(io, "|--------------------|--------------:|")
@@ -106,9 +108,9 @@ function write_results(julia_rows, r_rows, header_meta; outpath::AbstractString)
         println(io, "## Multi-threaded BLAS")
         println(io)
         println(io, "Not yet measured. The harness sets BLAS to a single thread on both ",
-                    "sides for the table above. A multi-threaded comparison is planned ",
-                    "for a follow-up benchmark file once `Pkg.develop`-linked Pardiso ",
-                    "(`GMRFsPardiso.jl`) lands as the default factorization backend.")
+            "sides for the table above. A multi-threaded comparison is planned ",
+            "for a follow-up benchmark file once `Pkg.develop`-linked Pardiso ",
+            "(`GMRFsPardiso.jl`) lands as the default factorization backend.")
         println(io)
         println(io, "## How to reproduce")
         println(io)

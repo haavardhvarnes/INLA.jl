@@ -55,7 +55,7 @@ end
     y = rand(rng, Poisson(0.4), n)
     E = fill(1.0, n)
     ℓ = PoissonLikelihood(; E=E)
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(ℓ, (Intercept(), IID(n)), A)
     res = inla(model, y; int_strategy=:grid)
 

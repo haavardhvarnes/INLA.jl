@@ -29,7 +29,7 @@ _matern_1d_nu_three_halves(r, κ, σ²) = σ² * (1 + κ * r) * exp(-κ * r)
     τ = inv(sqrt(2 * κ * σ²))     # σ² = 1 / (2κτ²)
 
     h = L / n
-    points = collect(-L/2:h:L/2)
+    points = collect((-L / 2):h:(L / 2))
     segments = hcat(1:n, 2:(n + 1))
     fem = FEMMatrices(points, segments)
     Q = spde_precision(fem, 1, τ, κ)
@@ -41,18 +41,18 @@ _matern_1d_nu_three_halves(r, κ, σ²) = σ² * (1 + κ * r) * exp(-κ * r)
     q_inv_col = F \ e_c
 
     # Marginal variance at the centre.
-    @test q_inv_col[c] ≈ σ² rtol = 0.05
+    @test q_inv_col[c]≈σ² rtol=0.05
 
     for di in (1, 5, 10, 20)
         r = di * h
         theoretical = _matern_1d_nu_half(r, κ, σ²)
         empirical = q_inv_col[c + di]
-        @test isapprox(empirical, theoretical; rtol = 0.10, atol = 0.02 * σ²)
+        @test isapprox(empirical, theoretical; rtol=0.10, atol=0.02 * σ²)
     end
 
     # Symmetry around the centre — interior pair, well away from
     # the boundary.
-    @test q_inv_col[c + 5] ≈ q_inv_col[c - 5] rtol = 1.0e-2
+    @test q_inv_col[c + 5]≈q_inv_col[c - 5] rtol=1.0e-2
 
     # Monotone decay.
     radial = [q_inv_col[c + di] for di in 0:30]
@@ -67,7 +67,7 @@ end
     τ = inv(sqrt(4 * κ^3 * σ²))    # σ² = 1 / (4κ³τ²)
 
     h = L / n
-    points = collect(-L/2:h:L/2)
+    points = collect((-L / 2):h:(L / 2))
     segments = hcat(1:n, 2:(n + 1))
     fem = FEMMatrices(points, segments)
     Q = spde_precision(fem, 2, τ, κ)
@@ -78,16 +78,16 @@ end
     e_c[c] = 1.0
     q_inv_col = F \ e_c
 
-    @test q_inv_col[c] ≈ σ² rtol = 0.05
+    @test q_inv_col[c]≈σ² rtol=0.05
 
     for di in (1, 5, 10, 20)
         r = di * h
         theoretical = _matern_1d_nu_three_halves(r, κ, σ²)
         empirical = q_inv_col[c + di]
-        @test isapprox(empirical, theoretical; rtol = 0.10, atol = 0.02 * σ²)
+        @test isapprox(empirical, theoretical; rtol=0.10, atol=0.02 * σ²)
     end
 
-    @test q_inv_col[c + 5] ≈ q_inv_col[c - 5] rtol = 1.0e-2
+    @test q_inv_col[c + 5]≈q_inv_col[c - 5] rtol=1.0e-2
     radial = [q_inv_col[c + di] for di in 0:30]
     @test all(diff(radial) .< 0)
 end

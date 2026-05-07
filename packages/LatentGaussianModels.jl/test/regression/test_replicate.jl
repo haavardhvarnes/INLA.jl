@@ -194,7 +194,7 @@ end
     θ = initial_hyperparameters(m)    # [log τ_y = 0, log τ_x = 0]
     res = laplace_mode(m, y, θ)
     @test res.converged
-    @test res.mode ≈ y ./ 2 atol = 1.0e-8
+    @test res.mode≈y ./ 2 atol=1.0e-8
 end
 
 @testset "Replicate(AR1) — INLA smoke fit" begin

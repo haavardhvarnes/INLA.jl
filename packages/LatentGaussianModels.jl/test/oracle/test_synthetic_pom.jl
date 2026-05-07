@@ -98,7 +98,7 @@ end
             θ_R_mean = [
                 _pom_row_value(sh, "theta1 for POM", "mean"),
                 _pom_row_value(sh, "theta2 for POM", "mean"),
-                _pom_row_value(sh, "theta3 for POM", "mean"),
+                _pom_row_value(sh, "theta3 for POM", "mean")
             ]
 
             hp = hyperparameters(model, res)

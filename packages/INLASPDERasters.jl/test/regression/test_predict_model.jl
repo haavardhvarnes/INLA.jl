@@ -80,7 +80,7 @@ end
                 component=2, quantity=q)
             r_manual = predict_raster(getfield(re["SPDE2[2]"], q), mesh,
                 template)
-            @test parent(r_model) ≈ parent(r_manual) rtol=1e-12
+            @test parent(r_model)≈parent(r_manual) rtol=1e-12
         end
     end
 
@@ -88,8 +88,8 @@ end
         r_int = predict_raster(model, res, template; component=2)
         r_str = predict_raster(model, res, template; component="SPDE2[2]")
         r_typ = predict_raster(model, res, template; component=SPDE2)
-        @test parent(r_int) ≈ parent(r_str) rtol=1e-12
-        @test parent(r_str) ≈ parent(r_typ) rtol=1e-12
+        @test parent(r_int)≈parent(r_str) rtol=1e-12
+        @test parent(r_str)≈parent(r_typ) rtol=1e-12
     end
 
     @testset "level keyword propagates to random_effects" begin

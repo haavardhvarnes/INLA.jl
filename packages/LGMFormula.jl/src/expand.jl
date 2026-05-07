@@ -34,32 +34,32 @@ function _build_expansion(lhs::Vector{Symbol}, has_intercept::Bool,
     if length(lhs) == 1
         mapping_expr = :(
             $LGMFormula._build_design_matrix(
-                $data_expr,
-                $(QuoteNode(first(lhs))),
-                $has_intercept,
-                $covariates_vec_expr,
-                $randoms_vec_expr,
-            )
+            $data_expr,
+            $(QuoteNode(first(lhs))),
+            $has_intercept,
+            $covariates_vec_expr,
+            $randoms_vec_expr
+        )
         )
     else
         lhs_vec_expr = Expr(:vect, [QuoteNode(c) for c in lhs]...)
         mapping_expr = :(
             $LGMFormula._build_multi_likelihood_mapping(
-                $data_expr,
-                $lhs_vec_expr,
-                $has_intercept,
-                $covariates_vec_expr,
-                $randoms_vec_expr,
-            )
+            $data_expr,
+            $lhs_vec_expr,
+            $has_intercept,
+            $covariates_vec_expr,
+            $randoms_vec_expr
+        )
         )
     end
 
     return :(
         $LatentGaussianModels.LatentGaussianModel(
-            $family_expr,
-            $components_expr,
-            $mapping_expr,
-        )
+        $family_expr,
+        $components_expr,
+        $mapping_expr
+    )
     )
 end
 
@@ -86,23 +86,21 @@ function _component_expr_for_term(term::NamedTuple, data_expr)
     grp_arg = term.group === nothing ? :nothing : QuoteNode(term.group)
     return :(
         $LGMFormula._wrap_term(
-            $(term.comp_expr),
-            $data_expr,
-            $rep_arg,
-            $grp_arg,
-        )
+        $(term.comp_expr),
+        $data_expr,
+        $rep_arg,
+        $grp_arg
+    )
     )
 end
 
 function _randoms_vec_expr(randoms::AbstractVector)
-    tuple_exprs = [
-        Expr(:tuple,
-            QuoteNode(term.col),
-            term.comp_expr,
-            term.replicate === nothing ? :nothing : QuoteNode(term.replicate),
-            term.group === nothing ? :nothing : QuoteNode(term.group),
-        ) for term in randoms
-    ]
+    tuple_exprs = [Expr(:tuple,
+                       QuoteNode(term.col),
+                       term.comp_expr,
+                       term.replicate === nothing ? :nothing : QuoteNode(term.replicate),
+                       term.group === nothing ? :nothing : QuoteNode(term.group)
+                   ) for term in randoms]
     return Expr(:vect, tuple_exprs...)
 end
 

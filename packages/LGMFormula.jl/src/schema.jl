@@ -183,8 +183,9 @@ function _build_design_matrix(data, lhs::Symbol, has_intercept::Bool,
             col = Tables.getcolumn(cols, col_name)
             length(col) == n_obs ||
                 throw(DimensionMismatch("@lgm: f-term column `$(col_name)` has length $(length(col)); outcome `$(lhs)` has length $(n_obs)"))
-            push!(blocks, _build_term_block(comp_or_factory, col, col_name,
-                rep_col, grp_col, cols, n_obs))
+            push!(blocks,
+                _build_term_block(comp_or_factory, col, col_name,
+                    rep_col, grp_col, cols, n_obs))
         end
     end
 
@@ -345,9 +346,10 @@ would produce.
 """
 function lgmformula(data;
         lhs::Union{Symbol, AbstractVector{Symbol}},
-        intercept::Bool = true,
-        covariates::Vector{Symbol} = Symbol[],
-        randoms::AbstractVector = Tuple{Symbol, LatentGaussianModels.AbstractLatentComponent}[],
+        intercept::Bool=true,
+        covariates::Vector{Symbol}=Symbol[],
+        randoms::AbstractVector=Tuple{
+            Symbol, LatentGaussianModels.AbstractLatentComponent}[],
         family)
     components = _build_components(intercept, length(covariates), randoms, data)
     if lhs isa Symbol

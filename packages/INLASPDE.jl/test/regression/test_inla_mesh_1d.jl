@@ -6,7 +6,7 @@ using LinearAlgebra
 
 @testset "inla_mesh_1d — basic refinement" begin
     loc = [0.0, 1.0, 2.0]
-    mesh = inla_mesh_1d(loc; max_edge = 0.4)
+    mesh = inla_mesh_1d(loc; max_edge=0.4)
 
     @test mesh isa INLAMesh1D
     @test issorted(mesh.points)
@@ -29,7 +29,7 @@ end
 
 @testset "inla_mesh_1d — unsorted + duplicate input" begin
     loc = [2.0, 0.0, 1.0, 1.0, 0.0]
-    mesh = inla_mesh_1d(loc; max_edge = 1.0, cutoff = 0.0)
+    mesh = inla_mesh_1d(loc; max_edge=1.0, cutoff=0.0)
 
     @test issorted(mesh.points)
     @test first(mesh.points) == 0.0
@@ -41,7 +41,7 @@ end
 
 @testset "inla_mesh_1d — cutoff merges close points" begin
     loc = [0.0, 0.005, 0.01, 1.0]
-    mesh = inla_mesh_1d(loc; max_edge = 1.0, cutoff = 0.05)
+    mesh = inla_mesh_1d(loc; max_edge=1.0, cutoff=0.05)
 
     # 0.005 and 0.01 are within cutoff of 0.0 → merged.
     @test mesh.points[1] == 0.0
@@ -51,7 +51,7 @@ end
 
 @testset "inla_mesh_1d — explicit boundary widens the domain" begin
     loc = [0.5, 1.5]
-    mesh = inla_mesh_1d(loc; max_edge = 0.3, boundary = (0.0, 2.0))
+    mesh = inla_mesh_1d(loc; max_edge=0.3, boundary=(0.0, 2.0))
     @test first(mesh.points) == 0.0
     @test last(mesh.points) == 2.0
     @test 0.5 in mesh.points
@@ -60,22 +60,22 @@ end
 end
 
 @testset "inla_mesh_1d — boundary inconsistency rejected" begin
-    @test_throws ArgumentError inla_mesh_1d([0.0, 5.0]; max_edge = 1.0,
-                                            boundary = (1.0, 4.0))
-    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge = 1.0,
-                                            boundary = (1.0, 0.0))
+    @test_throws ArgumentError inla_mesh_1d([0.0, 5.0]; max_edge=1.0,
+        boundary=(1.0, 4.0))
+    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge=1.0,
+        boundary=(1.0, 0.0))
 end
 
 @testset "inla_mesh_1d — argument validation" begin
-    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge = 0.0)
-    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge = -1.0)
-    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge = 1.0,
-                                            cutoff = -0.1)
-    @test_throws ArgumentError inla_mesh_1d(Float64[]; max_edge = 1.0)
+    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge=0.0)
+    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge=-1.0)
+    @test_throws ArgumentError inla_mesh_1d([0.0, 1.0]; max_edge=1.0,
+        cutoff=-0.1)
+    @test_throws ArgumentError inla_mesh_1d(Float64[]; max_edge=1.0)
 end
 
 @testset "FEMMatrices(mesh::INLAMesh1D) convenience" begin
-    mesh = inla_mesh_1d([0.0, 1.0, 2.0]; max_edge = 0.5)
+    mesh = inla_mesh_1d([0.0, 1.0, 2.0]; max_edge=0.5)
     fem = FEMMatrices(mesh)
     @test size(fem.C, 1) == num_vertices(mesh)
     Q = spde_precision(fem, 2, 1.0, 1.0)

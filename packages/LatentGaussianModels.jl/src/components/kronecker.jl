@@ -68,7 +68,8 @@ struct KroneckerComponent{S <: AbstractLatentComponent,
     space::S
     time::T
 
-    function KroneckerComponent{S, T}(space::S, time::T) where {
+    function KroneckerComponent{S, T}(space::S,
+            time::T) where {
             S <: AbstractLatentComponent, T <: AbstractLatentComponent}
         cs_s = GMRFs.constraints(space)
         cs_t = GMRFs.constraints(time)
@@ -179,7 +180,7 @@ function GMRFs.constraints(c::KroneckerComponent)
         e_s = GMRFs.constraint_rhs(cs_s)
         I_t = sparse(1.0I, n_t, n_t)
         A = Matrix(kron(sparse(Float64.(A_s)), I_t))
-        e = repeat(Float64.(e_s), inner = n_t)
+        e = repeat(Float64.(e_s), inner=n_t)
         return LinearConstraint(A, e)
     end
 end

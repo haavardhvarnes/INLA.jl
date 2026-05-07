@@ -136,7 +136,7 @@ end
     # one chord; the boundary still tracks the L-shape away from the corner.
     poly = nonconvex_hull_polygon(P; α=0.15)
     @test size(poly, 1) > size(convex_hull_polygon(P), 1)
-    @test _polygon_area(poly) ≈ 0.75 atol=0.02
+    @test _polygon_area(poly)≈0.75 atol=0.02
     # Convex hull would have area 1.0 — the alpha-shape is closer to 0.75.
     @test _polygon_area(poly) < 0.9
 end
@@ -181,8 +181,8 @@ end
     for r in axes(sq, 1)
         present = any(
             isapprox(sub[k, 1], sq[r, 1]; atol=1.0e-12) &&
-                isapprox(sub[k, 2], sq[r, 2]; atol=1.0e-12)
-            for k in axes(sub, 1)
+            isapprox(sub[k, 2], sq[r, 2]; atol=1.0e-12)
+        for k in axes(sub, 1)
         )
         @test present
     end

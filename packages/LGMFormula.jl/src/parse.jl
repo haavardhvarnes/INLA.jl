@@ -114,8 +114,8 @@ function _split_rhs(rhs)
         (:col, :comp_expr, :replicate, :group),
         Tuple{
             Union{Symbol, Tuple{Vararg{Symbol}}}, Any,
-            Union{Symbol, Nothing}, Union{Symbol, Nothing},
-        },
+            Union{Symbol, Nothing}, Union{Symbol, Nothing}
+        }
     }[]
     for s in _flatten_plus(rhs)
         if s === 1
@@ -190,8 +190,8 @@ function _parse_f_term(s::Expr)
         replicate === nothing && group === nothing ||
             error("@lgm: `f((cols...), Component)` does not yet support `replicate` or `group` (got both in `$s`); the tuple-coordinate path is for spatial / space-time terms only.")
     end
-    return (; col = col, comp_expr = comp_expr,
-        replicate = replicate, group = group)
+    return (; col=col, comp_expr=comp_expr,
+        replicate=replicate, group=group)
 end
 
 function _parse_f_col(col_expr, s)
@@ -238,5 +238,7 @@ function _flatten_plus(expr)
     end
 end
 
-_is_neg_one(s) = s isa Expr && s.head === :call && length(s.args) == 2 &&
-                 s.args[1] === :- && s.args[2] === 1
+function _is_neg_one(s)
+    s isa Expr && s.head === :call && length(s.args) == 2 &&
+        s.args[1] === :- && s.args[2] === 1
+end

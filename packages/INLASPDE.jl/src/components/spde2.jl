@@ -46,11 +46,11 @@ spde_raw = SPDE2(mesh.points, mesh.triangles)
 ```
 """
 struct SPDE2{
-        α, T,
-        FE <: FEMMatrices{T},
-        G <: GMRFs.AbstractGMRFGraph,
-        PR <: PCMatern,
-        M
+    α, T,
+    FE <: FEMMatrices{T},
+    G <: GMRFs.AbstractGMRFGraph,
+    PR <: PCMatern,
+    M
 } <: AbstractLatentComponent
     fem::FE
     graph::G

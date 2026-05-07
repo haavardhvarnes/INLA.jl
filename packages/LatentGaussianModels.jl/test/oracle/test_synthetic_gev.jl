@@ -70,7 +70,7 @@ end
 
             # Default initial η is zero, which lies inside the support
             # 1 + ξ √(τ s)(y − η) > 0 for the moderate ξ regime here.
-            res = inla(model, y; int_strategy = :grid)
+            res = inla(model, y; int_strategy=:grid)
 
             # --- Fixed effects ------------------------------------------------
             sf = fx["summary_fixed"]

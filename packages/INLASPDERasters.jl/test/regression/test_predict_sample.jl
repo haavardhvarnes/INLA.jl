@@ -159,7 +159,7 @@ end
     # Identical to working precision. Tightly bounded — BLAS thread
     # ordering can perturb the trailing bits of sparse-dense GEMM.
     interior = .!isnan.(a) .& .!isnan.(b)
-    @test a[interior] ≈ b[interior] rtol=1.0e-12
+    @test a[interior]≈b[interior] rtol=1.0e-12
     @test all(isnan.(a) .== isnan.(b))
 end
 

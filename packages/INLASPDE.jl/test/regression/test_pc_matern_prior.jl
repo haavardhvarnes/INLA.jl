@@ -113,7 +113,7 @@ end
         #   log(1/2) + log λ_ρ - (3/2) log ρ - λ_ρ · ρ^(-1/2)  +  log ρ
         # = log(1/2) + log λ_ρ - (1/2) log ρ - λ_ρ · ρ^(-1/2)
         log_π_ρ_logscale = log(0.5) + log(pc.λ_ρ) - 0.5 * log_ρ -
-            pc.λ_ρ * ρ^(-0.5)
+                           pc.λ_ρ * ρ^(-0.5)
         log_π_σ_logscale = log(pc.λ_σ) - pc.λ_σ * σ + log_σ
         expected = log_π_ρ_logscale + log_π_σ_logscale
         @test pc_matern_log_density(pc, log_ρ, log_σ)≈expected rtol=1.0e-12

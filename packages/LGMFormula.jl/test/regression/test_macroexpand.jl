@@ -58,18 +58,18 @@ function _is_call_to(expr, name::Symbol)
 end
 
 @testset "PR-1 @macroexpand structure" begin
-    df_dummy = (y = Float64[], x = Float64[], x1 = Float64[],
-        x2 = Float64[], idx = Int[])
+    df_dummy = (y=Float64[], x=Float64[], x1=Float64[],
+        x2=Float64[], idx=Int[])
 
     @testset "expansion is a LatentGaussianModel(...) call" begin
-        ex = @macroexpand @lgm y ~ 1 data=df_dummy family=GaussianLikelihood()
+        ex = @macroexpand @lgm y~1 data=df_dummy family=GaussianLikelihood()
         call = _find_lgm_call(ex)
         @test call !== nothing
         @test length(call.args) == 4   # callee, family, components, mapping
     end
 
     @testset "components tuple appears literally — Intercept only" begin
-        ex = @macroexpand @lgm y ~ 1 data=df_dummy family=GaussianLikelihood()
+        ex = @macroexpand @lgm y~1 data=df_dummy family=GaussianLikelihood()
         call = _find_lgm_call(ex)
         components = call.args[3]
         @test components isa Expr && components.head === :tuple
@@ -78,7 +78,7 @@ end
     end
 
     @testset "components tuple — Intercept + FixedEffects(2)" begin
-        ex = @macroexpand @lgm y ~ 1 + x1 + x2 data=df_dummy family=GaussianLikelihood()
+        ex = @macroexpand @lgm y~1 + x1 + x2 data=df_dummy family=GaussianLikelihood()
         call = _find_lgm_call(ex)
         components = call.args[3]
         @test components.head === :tuple
@@ -90,7 +90,7 @@ end
     end
 
     @testset "components tuple — Intercept + IID(5)" begin
-        ex = @macroexpand @lgm y ~ 1 + f(idx, IID(5)) data=df_dummy family=PoissonLikelihood()
+        ex = @macroexpand @lgm y~1 + f(idx, IID(5)) data=df_dummy family=PoissonLikelihood()
         call = _find_lgm_call(ex)
         components = call.args[3]
         @test components.head === :tuple
@@ -101,7 +101,7 @@ end
     end
 
     @testset "no intercept — components tuple — FixedEffects only" begin
-        ex = @macroexpand @lgm y ~ 0 + x1 data=df_dummy family=GaussianLikelihood()
+        ex = @macroexpand @lgm y~0 + x1 data=df_dummy family=GaussianLikelihood()
         call = _find_lgm_call(ex)
         components = call.args[3]
         @test components.head === :tuple
@@ -110,14 +110,14 @@ end
     end
 
     @testset "design-matrix call is _build_design_matrix" begin
-        ex = @macroexpand @lgm y ~ 1 + x1 + f(idx, IID(5)) data=df_dummy family=PoissonLikelihood()
+        ex = @macroexpand @lgm y~1 + x1 + f(idx, IID(5)) data=df_dummy family=PoissonLikelihood()
         call = _find_lgm_call(ex)
         mapping = call.args[4]
         @test _is_call_to(mapping, :_build_design_matrix)
     end
 
     @testset "family appears literally as the second argument" begin
-        ex = @macroexpand @lgm y ~ 1 data=df_dummy family=PoissonLikelihood()
+        ex = @macroexpand @lgm y~1 data=df_dummy family=PoissonLikelihood()
         call = _find_lgm_call(ex)
         family = call.args[2]
         @test _is_call_to(family, :PoissonLikelihood)

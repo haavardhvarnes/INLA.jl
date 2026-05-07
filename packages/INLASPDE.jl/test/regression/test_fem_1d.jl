@@ -25,14 +25,14 @@ using SparseArrays
     segments = [1 2; 2 3]
     C, G1 = assemble_fem_matrices_1d(points, segments)
 
-    expected_C = [1/3   1/6  0.0;
-                  1/6   1.0  1/3;
-                  0.0   1/3  2/3]
-    expected_G1 = [1.0  -1.0   0.0;
-                   -1.0  3/2  -1/2;
-                   0.0  -1/2   1/2]
-    @test Array(C) ≈ expected_C atol = 1.0e-12
-    @test Array(G1) ≈ expected_G1 atol = 1.0e-12
+    expected_C = [1/3 1/6 0.0;
+                  1/6 1.0 1/3;
+                  0.0 1/3 2/3]
+    expected_G1 = [1.0 -1.0 0.0;
+                   -1.0 3/2 -1/2;
+                   0.0 -1/2 1/2]
+    @test Array(C)≈expected_C atol=1.0e-12
+    @test Array(G1)≈expected_G1 atol=1.0e-12
 
     # Symmetry.
     @test Array(C) ≈ Array(C')
@@ -42,7 +42,7 @@ using SparseArrays
     @test sum(C; dims=2) ≈ [0.5, 1.5, 1.0]
 
     # Stiffness is constant-preserving: G₁ · 1 = 0.
-    @test G1 * ones(3) ≈ zeros(3) atol = 1.0e-12
+    @test G1 * ones(3)≈zeros(3) atol=1.0e-12
 end
 
 @testset "assemble_fem_matrices_1d — uniform grid scaling" begin
@@ -55,17 +55,17 @@ end
     segments = hcat(1:n, 2:(n + 1))
     C, G1 = assemble_fem_matrices_1d(points, segments)
 
-    @test G1[5, 5] ≈ 2 / h atol = 1.0e-12
-    @test G1[5, 4] ≈ -1 / h atol = 1.0e-12
-    @test G1[5, 6] ≈ -1 / h atol = 1.0e-12
+    @test G1[5, 5]≈2 / h atol=1.0e-12
+    @test G1[5, 4]≈-1 / h atol=1.0e-12
+    @test G1[5, 6]≈-1 / h atol=1.0e-12
     @test G1[5, 7] == 0          # local support
 
     # Boundary rows: half-stencil.
-    @test G1[1, 1] ≈ 1 / h atol = 1.0e-12
-    @test G1[n + 1, n + 1] ≈ 1 / h atol = 1.0e-12
+    @test G1[1, 1]≈1 / h atol=1.0e-12
+    @test G1[n + 1, n + 1]≈1 / h atol=1.0e-12
 
     # Sum of mass entries = total domain length.
-    @test sum(C) ≈ n * h atol = 1.0e-12
+    @test sum(C)≈n * h atol=1.0e-12
 end
 
 @testset "FEMMatrices — 1D constructor + α∈{1,2} precision" begin
@@ -89,8 +89,8 @@ end
     # Closed forms:
     #   α = 1: Q = τ²(κ²C + G₁)
     #   α = 2: Q = τ²(κ⁴C̃ + 2κ²G₁ + G₂)
-    @test Q1 ≈ fem.C + fem.G1 atol = 1.0e-12
-    @test Q2 ≈ fem.C_lumped + 2 * fem.G1 + fem.G2 atol = 1.0e-12
+    @test Q1≈fem.C + fem.G1 atol=1.0e-12
+    @test Q2≈fem.C_lumped + 2 * fem.G1 + fem.G2 atol=1.0e-12
 end
 
 @testset "assemble_fem_matrices_1d — argument validation" begin

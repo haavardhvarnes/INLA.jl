@@ -26,10 +26,10 @@ function _generic0_callable(R::AbstractMatrix; rd::Integer=0,
         hyperprior=PCPrecision())
     n = size(R, 1)
     Rs = SparseMatrixCSC{Float64, Int}(R)
-    return θ -> (; Q = exp(θ[1]) .* Rs,
-                   log_prior = log_prior_density(hyperprior, θ[1]),
-                   log_normc = -0.5 * (n - rd) * log(2π) +
-                               0.5 * (n - rd) * θ[1])
+    return θ -> (; Q=exp(θ[1]) .* Rs,
+        log_prior=log_prior_density(hyperprior, θ[1]),
+        log_normc=-0.5 * (n - rd) * log(2π) +
+                  0.5 * (n - rd) * θ[1])
 end
 
 @testset "UserComponent — contract" begin
@@ -53,7 +53,7 @@ end
 @testset "UserComponent — input validation" begin
     n = 3
     Rs = sparse(I, n, n)
-    callable = θ -> (; Q = exp(θ[1]) .* Rs)
+    callable = θ -> (; Q=exp(θ[1]) .* Rs)
 
     @test_throws ArgumentError UserComponent(callable; n=0)
     # Wrong-size Q.
@@ -113,10 +113,10 @@ end
         hyperprior=GammaPrecision(1.0, 5.0e-5))
     # Mirror the constraint in the UserComponent callable's NamedTuple.
     g0_cb = _generic0_callable(R; rd=1, hyperprior=GammaPrecision(1.0, 5.0e-5))
-    uc_callable = θ -> (; Q = g0_cb(θ).Q,
-                          log_prior = g0_cb(θ).log_prior,
-                          log_normc = g0_cb(θ).log_normc,
-                          constraint = constraint)
+    uc_callable = θ -> (; Q=g0_cb(θ).Q,
+        log_prior=g0_cb(θ).log_prior,
+        log_normc=g0_cb(θ).log_normc,
+        constraint=constraint)
     uc = UserComponent(uc_callable; n=n, θ0=[0.0])
 
     @test constraints(uc) isa LinearConstraint
@@ -143,13 +143,13 @@ end
     n = 20
     y = rand(rng, Poisson(1.5), n)
     E = fill(1.0, n)
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
 
     iid_callable = function (θ)
         τ = exp(θ[1])
-        return (; Q = sparse(τ * I, n, n),
-                  log_prior = log_prior_density(PCPrecision(), θ[1]),
-                  log_normc = -0.5 * n * log(2π) + 0.5 * n * θ[1])
+        return (; Q=sparse(τ * I, n, n),
+            log_prior=log_prior_density(PCPrecision(), θ[1]),
+            log_normc=-0.5 * n * log(2π) + 0.5 * n * θ[1])
     end
     uc_iid = UserComponent(iid_callable; n=n, θ0=[0.0])
 

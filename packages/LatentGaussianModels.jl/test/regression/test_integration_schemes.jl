@@ -143,29 +143,29 @@ end
 
     # Both vectors: stored.
     g1 = Grid(n_per_dim=5, span=3.0,
-              stdev_corr_pos=[2.0, 1.5],
-              stdev_corr_neg=[1.0, 0.8])
+        stdev_corr_pos=[2.0, 1.5],
+        stdev_corr_neg=[1.0, 0.8])
     @test g1.stdev_corr_pos == [2.0, 1.5]
     @test g1.stdev_corr_neg == [1.0, 0.8]
 
     # Mixed nothing/vector → reject.
     @test_throws ArgumentError Grid(n_per_dim=5, span=3.0,
-                                    stdev_corr_pos=[2.0])
+        stdev_corr_pos=[2.0])
     @test_throws ArgumentError Grid(n_per_dim=5, span=3.0,
-                                    stdev_corr_neg=[1.0])
+        stdev_corr_neg=[1.0])
 
     # Different lengths → reject.
     @test_throws ArgumentError Grid(n_per_dim=5, span=3.0,
-                                    stdev_corr_pos=[1.0, 1.0],
-                                    stdev_corr_neg=[1.0])
+        stdev_corr_pos=[1.0, 1.0],
+        stdev_corr_neg=[1.0])
 
     # Non-positive entries → reject.
     @test_throws ArgumentError Grid(n_per_dim=5, span=3.0,
-                                    stdev_corr_pos=[0.0],
-                                    stdev_corr_neg=[1.0])
+        stdev_corr_pos=[0.0],
+        stdev_corr_neg=[1.0])
     @test_throws ArgumentError Grid(n_per_dim=5, span=3.0,
-                                    stdev_corr_pos=[1.0],
-                                    stdev_corr_neg=[-1.0])
+        stdev_corr_pos=[1.0],
+        stdev_corr_neg=[-1.0])
 end
 
 @testset "Grid — integration_nodes applies asymmetric stretch" begin
@@ -181,7 +181,7 @@ end
 
     # Asymmetric: pos stretch = 2, neg stretch = 1 → z = -2, 0, 4.
     asym = Grid(n_per_dim=3, span=2.0,
-                stdev_corr_pos=[2.0], stdev_corr_neg=[1.0])
+        stdev_corr_pos=[2.0], stdev_corr_neg=[1.0])
     pts_asym, _ = integration_nodes(asym, θ̂, Σ)
     @test [p[1] for p in pts_asym] ≈ [-2.0, 0.0, 4.0]
 
@@ -199,8 +199,8 @@ end
     θ̂2 = [0.0, 0.0]
     Σ2 = Matrix{Float64}(I, 2, 2)
     asym2 = Grid(n_per_dim=3, span=1.0,
-                 stdev_corr_pos=[2.0, 3.0],
-                 stdev_corr_neg=[0.5, 0.4])
+        stdev_corr_pos=[2.0, 3.0],
+        stdev_corr_neg=[0.5, 0.4])
     pts2, _ = integration_nodes(asym2, θ̂2, Σ2)
     F = eigen(Symmetric(Σ2))
     halfσ = F.vectors * Diagonal(sqrt.(max.(F.values, 0.0)))
@@ -226,8 +226,8 @@ end
     Σ = reshape([1.0], 1, 1)
     log_post = θ -> -0.5 * sum(abs2, θ)
     pos, neg = compute_skewness_corrections(log_post, θ̂, Σ)
-    @test pos ≈ [1.0]  rtol=1.0e-12
-    @test neg ≈ [1.0]  rtol=1.0e-12
+    @test pos≈[1.0] rtol=1.0e-12
+    @test neg≈[1.0] rtol=1.0e-12
 end
 
 @testset "compute_skewness_corrections — asymmetric posterior matches σ⁺/σ⁻" begin
@@ -244,8 +244,8 @@ end
         x ≤ 0 ? -0.5 * x^2 : -0.125 * x^2
     end
     pos, neg = compute_skewness_corrections(log_post, θ̂, Σ)
-    @test pos ≈ [2.0]  rtol=1.0e-10
-    @test neg ≈ [1.0]  rtol=1.0e-10
+    @test pos≈[2.0] rtol=1.0e-10
+    @test neg≈[1.0] rtol=1.0e-10
 end
 
 @testset "compute_skewness_corrections — flat axis stays at 1" begin
@@ -254,7 +254,7 @@ end
     Σ = reshape([1.0], 1, 1)
     log_post = θ -> -1.0e-6 * sum(abs2, θ)   # essentially flat
     pos, neg = compute_skewness_corrections(log_post, θ̂, Σ;
-                                            threshold=0.05)
+        threshold=0.05)
     @test pos == [1.0]
     @test neg == [1.0]
 end
@@ -269,7 +269,7 @@ end
         x ≤ 0 ? -0.5 * x^2 : -1.0e6 * x^2
     end
     pos, neg = compute_skewness_corrections(log_post, θ̂, Σ;
-                                            max_stretch=5.0)
+        max_stretch=5.0)
     @test pos[1] ≈ 1 / 5.0
     @test neg ≈ [1.0]
 end

@@ -45,10 +45,7 @@ The Tier-1 surface the macro must cover, after Phase M close at v0.2.0:
 | Spatial `f(coords, SPDE2(mesh))` | M | Coords as a 2-column term |
 
 R-INLA's `inla(formula, family = ..., data = ...)` is the calling
-convention to match where it doesn't conflict with Julia idioms. The
-predecessor [`IntegratedNestedLaplace.jl`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl)
-has a `_build_latent_effect` reference that documents the field-by-
-field translation; port the pattern, not the file.
+convention to match where it doesn't conflict with Julia idioms.
 
 ## PR sequence
 
@@ -306,7 +303,6 @@ viable workaround for users who need it).
 | Observation mapping types | [`packages/LatentGaussianModels.jl/src/observation_mapping.jl`](../packages/LatentGaussianModels.jl/src/observation_mapping.jl) |
 | `Copy` source | [`packages/LatentGaussianModels.jl/src/likelihoods/copy.jl`](../packages/LatentGaussianModels.jl/src/likelihoods/copy.jl) |
 | Replicate / Group source | [`packages/LatentGaussianModels.jl/src/components/{replicate,group}.jl`](../packages/LatentGaussianModels.jl/src/components/replicate.jl) |
-| Predecessor reference | `_build_latent_effect` in `IntegratedNestedLaplace.jl` (port pattern, not file) |
 | LGMFormula plan ledger | [`packages/LGMFormula.jl/plans/plan.md`](../packages/LGMFormula.jl/plans/plan.md) |
 | Macro policy | [`plans/macro-policy.md`](macro-policy.md) |
 | ADR registry | [`plans/decisions.md`](decisions.md) — append ADR-033 (multi-likelihood syntax), optional ADR-034 (KroneckerComponent ergonomics) |

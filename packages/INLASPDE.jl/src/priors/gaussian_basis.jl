@@ -45,8 +45,8 @@ prior = GaussianBasisPrior(
 )
 ```
 
-See ADR-028 for the design rationale (R-INLA-parity choice over the
-predecessor's unit-Gaussian default and over PC-on-basis-norm).
+See ADR-028 for the design rationale (R-INLA-parity choice over a
+unit-Gaussian default and over PC-on-basis-norm).
 """
 struct GaussianBasisPrior{T <: Real}
     mean::Vector{T}

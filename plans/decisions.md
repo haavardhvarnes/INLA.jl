@@ -863,8 +863,7 @@ mode by `Δx = ½ H⁻¹ Aᵀ (h³ ⊙ σ²_η)`, so for a true match against
 R-INLA's posterior mean on skewed likelihoods (Poisson, Binomial,
 Gamma, NegBin) we need the mean shift as well.
 
-Investigation prompted by `haavardhvarnes/IntegratedNestedLaplace.jl`
-(`laplace_eval`), which ships the same formula. The mean shift is one
+The mean shift is one
 multi-RHS sparse triangular solve per integration point; with our
 existing `FactorCache` `\` (`packages/GMRFs.jl/src/factorization.jl:74`),
 existing closed-form `∇³_η_log_density` for all v0.1 likelihoods, and
@@ -882,8 +881,6 @@ log-marginal correction:
   higher-order term).
 - The Edgeworth term materialises a dense `Σ_η = A H⁻¹ Aᵀ` and is
   `O(n_obs²)` to `O(n_obs³)` — blows the Phase-D 30 s Scotland budget.
-  The reference repo's own code computes it but does not use it
-  ("Phase 6g uses 3rd-order Taylor instead").
 - The IS estimator at fixed N=100 ships no ESS diagnostic, and at this
   scale its Monte-Carlo error (~ 0.1 nat) is comparable to or larger
   than the corrections it claims to make.
@@ -946,8 +943,6 @@ corrections remain v0.3 / out of scope.
   rewritten to keep Edgeworth / variance correction deferred while
   removing the mean shift from the deferred list.
 - Rue, Martino, Chopin (2009) §4.2.
-- `haavardhvarnes/IntegratedNestedLaplace.jl` `laplace_eval` —
-  reference implementation of the mean shift.
 - `packages/LatentGaussianModels.jl/src/inference/simplified_laplace_correction.jl`
   — implementation.
 - `packages/LatentGaussianModels.jl/test/regression/test_sla_mean_shift.jl`
@@ -1936,9 +1931,8 @@ by inspecting the kwargs; users don't see the dispatch.
 ### Why (B) over (A) as default
 
 1. **Matches R-INLA's `2diid` defaults bit-for-bit.** R-INLA's
-   `2diid` model uses `loggamma + atanh-ρ-Gaussian` defaults; the
-   reference implementation `IntegratedNestedLaplace.jl`'s
-   `BivariateIIDModel` does the same. Defaulting to (A) — Wishart on Λ
+   `2diid` model uses `loggamma + atanh-ρ-Gaussian` defaults.
+   Defaulting to (A) — Wishart on Λ
    — would silently diverge from R-INLA's most-used multivariate-IID
    path (R-INLA's docs list `2diid` as the recommended form when the
    user has scalar precisions + correlation in mind, which is the
@@ -2056,8 +2050,6 @@ this if a real use case appears.
   method.* — N≥3 Cholesky-of-correlation parameterisation.
 - R-INLA `f(., model="2diid", ...)` and `f(., model="iid3d", ...)` —
   the parameterisations this ADR matches.
-- `IntegratedNestedLaplace.jl` `BivariateIIDModel` — reference
-  implementation using the separable form.
 
 ---
 
@@ -2945,16 +2937,15 @@ returns the Rue-Martino shift / Edgeworth-corrected mixture;
 
 ---
 
-## ADR-027: IS-correction port from `IntegratedNestedLaplace.jl` — declined for v0.x; deferred to per-workflow strategy if a use case appears
+## ADR-027: Importance-sampling correction — declined for v0.x; deferred to per-workflow strategy if a use case appears
 
 Status: Accepted
 Date: 2026-05-05
 
 ### Context
 
-Phase L's tail carried a deferred stretch item, PR-7(b), to port an
-"importance-sampling correction" from
-`IntegratedNestedLaplace.jl` per
+Phase L's tail carried a deferred stretch item, PR-7(b), to add an
+"importance-sampling correction" per
 [`plans/replan-2026-04-28.md`](replan-2026-04-28.md) lines 497-498,
 behind an `INLA(; importance_sample_correct=false)` flag. With Phase L
 shipped at v0.1.5 (2026-05-04), the natural moment to either close or
@@ -2979,16 +2970,10 @@ Investigation surfaced three things:
    `Grid` / `CCD`. The Phase K skewness-correction docstring at
    [`integration.jl:65`](../packages/LatentGaussianModels.jl/src/inference/integration.jl)
    explicitly notes "the IS reweight in step (3) absorbs the proposal
-   mismatch." So the replan's "port IS correction from
-   `IntegratedNestedLaplace.jl`" is *not* about adding a missing
-   reweight — the reweight is not missing.
+   mismatch." So the replan's "IS correction" is *not* about adding a
+   missing reweight — the reweight is not missing.
 
-2. **`IntegratedNestedLaplace.jl` is the user's own predecessor
-   experiment**, not an upstream library. It implements the same
-   Laplace-Gaussian IS flow we already have; there is no extra IS path
-   to port.
-
-3. **The only literature implementation with a substantively-different
+2. **The only literature implementation with a substantively-different
    IS correction is Berild, Bolin, Lindgren, Rue (2022) "Importance
    Sampling with the Integrated Nested Laplace Approximation"** (JCGS
    31(4); arXiv 2103.02721; reference R code at
@@ -3014,12 +2999,12 @@ Investigation surfaced three things:
      Phase L's `FullLaplace`). IS-INLA targets *θ*-uncertainty under
      non-standard θ-priors specifically.
 
-The Phase K decision matrix already records that the fixed-`N=100`
-Monte-Carlo IS marginal-likelihood correction from
-`IntegratedNestedLaplace.jl` was evaluated and rejected because, at
-that scale, its Monte-Carlo error (~0.1 nat) is comparable to or
-larger than the corrections it claims to make and it ships no ESS
-diagnostic. Nothing about Phase L's close changes that arithmetic.
+The Phase K decision matrix already records that a fixed-`N=100`
+Monte-Carlo IS marginal-likelihood correction was evaluated and
+rejected because, at that scale, its Monte-Carlo error (~0.1 nat) is
+comparable to or larger than the corrections it claims to make and it
+ships no ESS diagnostic. Nothing about Phase L's close changes that
+arithmetic.
 
 ### Decision
 
@@ -3095,10 +3080,9 @@ Date: 2026-05-05
 
 ### Context
 
-Phase M PR-3 ports `NonStationarySPDEModel` from the predecessor repo
-(`haavardhvarnes/IntegratedNestedLaplace.jl`,
-`dev/INLAModels/src/INLAModels.jl:236-378`) and lands an oracle fixture
-against R-INLA's `inla.spde2.matern` (Lindgren-Rue-Lindström 2011 §3.2).
+Phase M PR-3 implements `NonStationarySPDEModel` and lands an oracle
+fixture against R-INLA's `inla.spde2.matern` (Lindgren-Rue-Lindström
+2011 §3.2).
 
 The non-stationary SPDE is parameterised by per-vertex
 `log τ_v = (B_τ θ_τ)_v` and `log κ_v = (B_κ θ_κ)_v`, where `B_τ`,
@@ -3108,13 +3092,10 @@ The non-stationary SPDE is parameterised by per-vertex
 
 Three options were on the table:
 
-1. **Predecessor port — unit-Gaussian on every coefficient.**
-   `IntegratedNestedLaplace.jl` defines
-   `log_prior(NonStationarySPDEModel, θ) = -0.5 ‖θ‖²`
-   ([`INLAModels.jl:376-378`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl/blob/master/dev/INLAModels/src/INLAModels.jl#L376-L378)).
-   No per-coefficient mean/precision tuning, no R-INLA-parity
-   structure. The predecessor never validated the non-stationary fit
-   against R-INLA, so the prior was never load-bearing.
+1. **Unit-Gaussian on every coefficient.**
+   `log_prior(NonStationarySPDEModel, θ) = -0.5 ‖θ‖²`. No
+   per-coefficient mean/precision tuning, no R-INLA-parity structure;
+   would not be load-bearing against the LRL §3.2 fixture.
 
 2. **R-INLA `theta.prior.mean` / `theta.prior.prec` per-coefficient
    Gaussian.** R-INLA's `inla.spde2.matern` exposes two vectors of
@@ -3160,12 +3141,12 @@ Three options were on the table:
    `PR <: PCMatern`). `GaussianBasisPrior` follows the same shape:
    `SPDE2NonStationary{α, T, FE, G, PR <: GaussianBasisPrior}`.
 
-3. **Decline the predecessor's unit-Gaussian default.** Hard-coding
-   `prec = 1` for the intercept column hard-codes the prior-belief
-   "log τ should be order-1 around zero" which is *not* a safe default
-   for arbitrary mesh scales. Exposing both `mean` and `prec` lets
-   users widen the prior on intercept columns and tighten it on
-   spline-basis columns — the canonical R-INLA usage pattern.
+3. **Decline the unit-Gaussian default.** Hard-coding `prec = 1` for
+   the intercept column hard-codes the prior-belief "log τ should be
+   order-1 around zero" which is *not* a safe default for arbitrary
+   mesh scales. Exposing both `mean` and `prec` lets users widen the
+   prior on intercept columns and tighten it on spline-basis
+   columns — the canonical R-INLA usage pattern.
 
 4. **Defer PC-on-basis-norm to a follow-up component or a v0.3+
    evolution.** No fixture, no parity benchmark; revisit if a real
@@ -3187,7 +3168,7 @@ Three options were on the table:
 
 #### Neutral
 
-- The predecessor's unit-Gaussian behavior is recoverable as
+- Unit-Gaussian behavior is recoverable as
   `GaussianBasisPrior(zeros(p), ones(p))`, which is the default.
 - One more public surface (`GaussianBasisPrior`) but it's confined to
   `INLASPDE.jl` and only used by `SPDE2NonStationary`.
@@ -3207,8 +3188,6 @@ Three options were on the table:
   §6 sketches the basis-norm PC prior (deferred).
 - R-INLA `inla.spde2.matern` source — `theta.prior.mean` /
   `theta.prior.prec` per-coefficient Gaussian parameterisation.
-- [`INLAModels.jl:236-378`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl/blob/master/dev/INLAModels/src/INLAModels.jl#L236-L378)
-  — predecessor port source (declined unit-Gaussian default).
 
 ---
 
@@ -3458,14 +3437,12 @@ three things:
    path with augmented latents. That is not a "stretch tail" item; it
    is a phase-shape change.
 
-4. **No predecessor port path.** The user's predecessor
-   `IntegratedNestedLaplace.jl` does not implement fractional-α. There
-   is no existing kernel to graduate — PR-7 is a fresh write
-   regardless. Stretch-tail justification for shipping in Phase M
-   relied on the plan's (incorrect) "shifted-κ sum of precisions"
-   sketch; once the actual construction is in view, the LOC budget
-   is closer to PR-3's port (~500 LOC across LGM + INLASPDE) than
-   PR-6's mesh utilities work (~250 LOC, single package).
+4. **PR-7 is a fresh write regardless.** Stretch-tail justification
+   for shipping in Phase M relied on the plan's (incorrect)
+   "shifted-κ sum of precisions" sketch; once the actual construction
+   is in view, the LOC budget is closer to PR-3 (~500 LOC across LGM
+   + INLASPDE) than PR-6's mesh utilities work (~250 LOC, single
+   package).
 
 5. **No oracle-fixture obligation.** The replan's three Phase M
    oracles (synthetic 1D, Lindgren-Rue-Lindström §3.2, Cameletti
@@ -3640,14 +3617,13 @@ into the penalty region. Users debugging "why does INLA think this θ
 is infeasible?" then have to single-step the inner Newton to discover
 the error.
 
-The predecessor `IntegratedNestedLaplace.jl` (`src/INLA.jl:387-415`)
-caught only `LinearAlgebra.PosDefException` because that was the
-single failure mode it had observed; this PR (M-PR-4) is the moment
-to lift that targeting into the new code, and to add the two adjacent
-numerical-failure types we expect: `SingularException` (LAPACK side of
-the same Cholesky failure) and `DomainError` (out-of-domain log
-likelihood — e.g. negative variance in a hand-coded Gaussian
-log-density at a pathological θ).
+An earlier prototype caught only `LinearAlgebra.PosDefException`
+because that was the single failure mode it had observed; this PR
+(M-PR-4) is the moment to lift that targeting into the new code, and
+to add the two adjacent numerical-failure types we expect:
+`SingularException` (LAPACK side of the same Cholesky failure) and
+`DomainError` (out-of-domain log likelihood — e.g. negative variance
+in a hand-coded Gaussian log-density at a pathological θ).
 
 ### Decision
 
@@ -3692,7 +3668,7 @@ The penalty form `1.0e10 + 1.0e3 · ‖θ‖²` is unchanged.
 - The classifier is a single point of truth — adding a new failure
   mode is a one-line edit, and the test suite (predicate +
   end-to-end on Gaussian/SPDE2 fixtures) covers both sides.
-- The predecessor's pattern is preserved as the v0.2 baseline; future
+- The targeted-classifier pattern is set as the v0.2 baseline; future
   numerical-failure modes can be folded in without re-architecting
   the wrappers.
 
@@ -3732,8 +3708,6 @@ The penalty form `1.0e10 + 1.0e3 · ‖θ‖²` is unchanged.
   — `spde_precision` / `spde_precision_nonstationary` parametric
   `(τ, κ)` checks raised as `DomainError`; structural `α ∈ {1, 2}`
   and length-mismatch checks stay `ArgumentError`.
-- [`src/IntegratedNestedLaplace.jl:387-415`](https://github.com/haavardhvarnes/IntegratedNestedLaplace.jl/blob/master/src/IntegratedNestedLaplace.jl#L387-L415)
-  — predecessor pattern (single `PosDefException` catch).
 - ADR-022 — IIDND saturation precedent for the smooth-penalty design.
 
 ---
@@ -4288,10 +4262,10 @@ used, pointing at the mesh-bearing constructor as the fix.
 
 - An additive field is, formally, a contract change in `INLASPDE.jl`
   — bumped 0.2.0 → 0.3.0. Code paths that compare `SPDE2` structs by
-  field set (oracle fixture round-trip, predecessor-port material in
-  `dev/INLAModels/`) had to be audited. The audit found one site
-  (oracle fixture replay) which already uses `_struct_isequal`-style
-  comparisons that ignore the new field if it's `nothing`.
+  field set (oracle fixture round-trip) had to be audited. The audit
+  found one site (oracle fixture replay) which already uses
+  `_struct_isequal`-style comparisons that ignore the new field if
+  it's `nothing`.
 
 ### References
 

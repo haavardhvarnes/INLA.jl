@@ -402,9 +402,7 @@ a new `AugmentedLatentComponent` seam.
   with `B_τ ∈ ℝ^{n_v × (p_τ+1)}` and `B_κ ∈ ℝ^{n_v × (p_κ+1)}` basis
   matrices (intercept column + `p` spline columns). Internal `θ`
   layout `[θ_τ_0, …, θ_τ_pτ, θ_κ_0, …, θ_κ_pκ]` length
-  `2 + p_τ + p_κ`. `α = 2` only in v0.2; α ∈ {1} deferred. Ports the
-  numerical kernel from the predecessor's
-  `IntegratedNestedLaplace.jl/dev/INLAModels/`. ADR-028 documents the
+  `2 + p_τ + p_κ`. `α = 2` only in v0.2; α ∈ {1} deferred. ADR-028 documents the
   prior choice: `GaussianBasisPrior(mean, prec)` matches R-INLA's
   `theta.prior.mean`/`theta.prior.prec` per-coefficient
   parameterisation; PC-on-basis-norm deferred. Validated against the
@@ -414,8 +412,7 @@ a new `AugmentedLatentComponent` seam.
   [`src/components/spde2_nonstationary.jl`](packages/INLASPDE.jl/src/components/spde2_nonstationary.jl)
   + [`src/priors/gaussian_basis.jl`](packages/INLASPDE.jl/src/priors/gaussian_basis.jl).
 - **PD-failure safety net for the Laplace inner Newton loop** (PR-4,
-  ADR-031) — generalises the predecessor's `try/catch PosDefException →
-  smooth penalty` pattern. Three layered defenses inside
+  ADR-031) — `try/catch PosDefException → smooth penalty` pattern. Three layered defenses inside
   [`inference/laplace.jl`](packages/LatentGaussianModels.jl/src/inference/laplace.jl)
   and [`inference/inla.jl`](packages/LatentGaussianModels.jl/src/inference/inla.jl):
   (a) `cholesky(Symmetric(H))` failure or non-finite log-density
@@ -517,10 +514,10 @@ a new `AugmentedLatentComponent` seam.
 
 ### ADRs added in this release
 
-- **ADR-027** — IS-correction port from `IntegratedNestedLaplace.jl`
-  declined for v0.x; re-routed to a per-workflow `ISINLA <:
-  AbstractInferenceStrategy` if/when a Bayesian-lasso /
-  quantile-regression / missing-covariate use case appears.
+- **ADR-027** — IS-correction declined for v0.x; re-routed to a
+  per-workflow `ISINLA <: AbstractInferenceStrategy` if/when a
+  Bayesian-lasso / quantile-regression / missing-covariate use case
+  appears.
 - **ADR-028** — Gaussian-basis prior on non-stationary SPDE
   coefficients matches R-INLA's `theta.prior.mean` / `theta.prior.prec`
   per-coefficient parameterisation; PC-on-basis-norm deferred.
@@ -636,9 +633,8 @@ and the `INLA.jl` umbrella; `GMRFs.jl`, `INLASPDE.jl`, and
   skewness_correction = true)`** (PR-3) — R-INLA `inla.hyperpar`
   equivalent. Re-runs the integration stage against a denser `Grid`
   design without redoing the outer LBFGS / FD-Hessian pass; reuses
-  `res.θ̂` and `res.Σθ` from the input fit. Closes the
-  IntegratedNestedLaplace.jl-documented heavy-tail undersampling
-  failure mode (Brunei pathology). Defaults differ from `inla()`'s
+  `res.θ̂` and `res.Σθ` from the input fit. Closes the heavy-tail
+  undersampling failure mode (Brunei pathology). Defaults differ from `inla()`'s
   (5×5 grid, no skewness correction) because the user calls
   `refine_hyperposterior` precisely when the default is too coarse.
   Refactors `fit(::INLA)` to factor the integration stage into a

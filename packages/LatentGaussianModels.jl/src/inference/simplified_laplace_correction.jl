@@ -6,10 +6,7 @@
 # this corrects the *summary* `INLAResult.x_mean` / `x_var`; that one
 # corrects the per-coordinate density of `p(x_i | y)`.
 #
-# Reference: Rue, Martino, Chopin (2009) §4.2. The reference repo
-# `haavardhvarnes/IntegratedNestedLaplace.jl` (`laplace_eval`) uses the
-# same formula; we re-implement here to match our `LaplaceResult` and
-# constraint-handling conventions.
+# Reference: Rue, Martino, Chopin (2009) §4.2.
 
 """
     _sla_mean_shift(lp::LaplaceResult, model::LatentGaussianModel, y)

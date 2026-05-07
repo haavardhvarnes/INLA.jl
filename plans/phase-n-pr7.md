@@ -206,9 +206,8 @@ construction with `MeshProjector(spde.mesh, loc)` agreeing with
 `MeshProjector(mesh, loc)` built from the original mesh.
 
 **Risk**: `SPDE2` is the central type for the entire SPDE stack;
-adding a field is risky if downstream code (predecessor port
-material, oracle test fixtures, raster prediction) compares structs
-by field set. Audit before merging.
+adding a field is risky if downstream code (oracle test fixtures,
+raster prediction) compares structs by field set. Audit before merging.
 
 ### PR-7b — Tuple-coordinate parser + spatial-projector schema (ADR-037, ADR-039)
 
@@ -327,8 +326,7 @@ visible change — mapping shape can now be Kronecker).
 ## Estimated cadence
 
 - PR-7a: ~3 days. `SPDE2` field addition + audit of downstream
-  consumers (oracle fixtures, predecessor-port material). Risk lives
-  here, not in the macro work.
+  consumers (oracle fixtures). Risk lives here, not in the macro work.
 - PR-7b: ~4 days. Parser change, extension scaffolding, new
   regression tests, migration-guide live example for Meuse.
 - PR-7c: ~3 days. KroneckerComponent path + Cameletti roundtrip;
@@ -341,9 +339,8 @@ Total: ~2 weeks. Phase N's stretch budget per
 ~3 weeks, leaving a 2-week buffer that aligns with this estimate.
 
 If PR-7a's audit surfaces a downstream-consumer issue that needs its
-own PR (e.g. predecessor-port material in `dev/INLAModels/` referencing
-`SPDE2`'s exact field set), the cadence stretches; in that case PR-7
-defers to Phase N+1 and the stub paragraphs in PR-6 stay as-is.
+own PR, the cadence stretches; in that case PR-7 defers to Phase N+1
+and the stub paragraphs in PR-6 stay as-is.
 
 ## Phase close + release target
 

@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       statuses: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
@@ -35,13 +36,11 @@ jobs:
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
-          # Skip src-less placeholder packages (e.g. `LGMFormula.jl`,
-          # `GMRFsPardiso.jl` are 0.1.0-DEV scaffolding); `Pkg.develop`
-          # rejects path-less packages with `expected the file
-          # src/<Name>.jl to exist`.
-          local_pkgs = filter(p -> isdir(p) && isdir(joinpath(p, "src")),
-              readdir("packages", join=true))
-          Pkg.develop([Pkg.PackageSpec(path=p) for p in local_pkgs])
+          # `[sources]` in docs/Project.toml pins the five docs deps to
+          # their in-tree paths; `Pkg.instantiate` resolves the rest.
+          # Don't `Pkg.develop` all of `packages/*` — it pulls in
+          # LGMTuring/GMRFsPardiso/INLA which docs don't import and
+          # whose stale compat pins have broken the build.
           Pkg.instantiate()
           # `shell:` scripts run from a temp dir, so `include` resolves
           # relative to that dir. Anchor at `pwd()` (the workspace root)

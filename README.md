@@ -67,7 +67,6 @@ From a fresh Julia REPL:
 ```julia
 using Pkg
 Pkg.Registry.add(RegistrySpec(url = "https://github.com/haavardhvarnes/JuliaRegistry"))
-Pkg.Registry.add("General")  # idempotent if already added
 Pkg.add("INLA")              # umbrella: GMRFs + LatentGaussianModels + INLASPDE
 ```
 

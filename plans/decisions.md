@@ -18,7 +18,77 @@ What did we choose?
 What does this buy us, what does it cost us, what's the escape hatch?
 ```
 
-Numbering is sequential; never renumber.
+Numbering is sequential; never renumber. ADRs remain in numerical
+order in the body — the topical index below is a forward index, not
+a reorder.
+
+## Topical index
+
+For navigation; ADR bodies appear in numerical order under the index.
+
+**Architecture & package layout**
+- [ADR-001](#adr-001-package-split-into-gmrfs--latentgaussianmodels--inlaspde) — package split into GMRFs / LatentGaussianModels / INLASPDE
+- [ADR-008](#adr-008-lgm-macro-lives-in-a-separate-lgmformulajl-package) — `@lgm` macro lives in `LGMFormula.jl`
+- [ADR-009](#adr-009-turing--hmc-bridge-lives-in-a-separate-lgmturingjl-package) — Turing / HMC bridge lives in `LGMTuring.jl`
+- [ADR-014](#adr-014-main-is-fast-forwarded-to-claudehungry-pascal-main-becomes-the-integration-branch-going-forward) — `main` is the integration branch
+- [ADR-015](#adr-015-lgmformulajl-and-gmrfspardisojl-both-cut-from-v01-deferred-to-v02) — LGMFormula.jl / GMRFsPardiso.jl deferral
+- [ADR-020](#adr-020-drop-julia-110-lts-support--julia-112-is-the-minimum-supported-version) — Julia 1.12+ minimum
+- [ADR-039](#adr-039-lgmformula--inlaspde-integration-ships-as-a-julia-19-weakdep-extension-not-a-hard-dep-or-duck-typed-hook) — LGMFormula ↔ INLASPDE weakdep extension
+- [ADR-042](#adr-042-inlaspderasters-takes-a-load-bearing-dep-on-latentgaussianmodels-via-model-res--overloads) — INLASPDERasters' load-bearing LGM dep
+
+**Dispatch & API conventions**
+- [ADR-003](#adr-003-multiple-dispatch-not-macros-for-the-primary-api) — multiple dispatch over macros
+- [ADR-010](#adr-010-public-kwargs-mirror-r-inla-names-with-snake_case--symbol-or-type-dual-input) — snake_case + symbol-or-type kwargs
+- [ADR-011](#adr-011-top-level-api-is-fitmodel-y-strategy-kwargs-inlamodel-y-kwargs-is-a-convenience-alias) — `fit(model, y, strategy; …)` top-level
+- [ADR-025](#adr-025-usercomponent-callback-signature-r-inla-rgeneric) — `UserComponent` callback (rgeneric)
+- [ADR-026](#adr-026-marginal-strategies-via-abstractmarginalstrategy-type-dispatch) — `AbstractMarginalStrategy` type dispatch
+
+**Inference algorithms**
+- [ADR-002](#adr-002-scimls-linearsolvejl-as-the-sparse-factorization-backend) — LinearSolve.jl factorization backend
+- [ADR-004](#adr-004-selected-inversion-takahashi-recursion-as-an-explicit-risk) — selected inversion (Takahashi)
+- [ADR-006](#adr-006-full-laplace-is-the-phase-3-default-simplifiedlaplace-deferred) — full Laplace default (amended; see ADR-016)
+- [ADR-012](#adr-012-adopt-selectedinversionjl-for-sparse-selected-inverse) — adopt SelectedInversion.jl
+- [ADR-016](#adr-016-simplified-laplace-mean-shift-correction-rue-martino-added-as-opt-in-latent_strategy) — simplified-Laplace mean-shift correction
+- [ADR-027](#adr-027-is-correction-port-from-integratednestedlaplacejl--declined-for-v0x-deferred-to-per-workflow-strategy-if-a-use-case-appears) — IS correction declined
+- [ADR-031](#adr-031-targeted-exception-classification-in-the-laplace-bad-θ-wrapper) — targeted exception classification
+
+**Observation mapping & projectors**
+- [ADR-005](#adr-005-projector-matrix-a-as-a-model-field-in-v0x-possibly-promoted-later) — projector A as model field
+- [ADR-017](#adr-017-projector-seam--abstractobservationmapping-for-joint-likelihood--multi-response-models) — `AbstractObservationMapping`
+- [ADR-021](#adr-021-copy-component--scaling-β-lives-on-the-receiving-likelihood-not-on-the-projection-mapping) — `Copy` β on receiving likelihood
+
+**Likelihoods**
+- [ADR-018](#adr-018-censoring-as-a-likelihood-level-feature--censoring-enum--per-row-vector-on-the-survival-likelihood-struct) — censoring at likelihood level
+- [ADR-019](#adr-019-zero-inflated-count-families--three-r-inla-parameterisations--three-base-distributions) — zero-inflated count families
+- [ADR-024](#adr-024-categorical--multinomial-via-independent-poisson-reformulation-helper-function-api-no-new-likelihood-type) — Categorical / Multinomial via independent-Poisson
+
+**Latent components**
+- [ADR-022](#adr-022-iidndn-parameterisation--separable-log-τ_i-atanh-ρ_ij-by-default-wishartinvwishart-on-the-joint-precision-as-alternative) — `IIDND{N}` parameterisation
+- [ADR-023](#adr-023-meb-and-mec-measurement-error-components--β-via-copy-decomposition-non-zero-prior_mean-made-load-bearing) — `MEB` / `MEC` measurement-error
+
+**SPDE & mesh**
+- [ADR-007](#adr-007-delaunaytriangulationjl-for-mesh-generation-fmesher-wrap-as-fallback-sub-package) — DelaunayTriangulation.jl + fmesher fallback
+- [ADR-013](#adr-013-spde2-v01-supports-α--1-2-internal-hyperparameters-are-log-τ-log-κ) — SPDE2 α ∈ {1, 2}
+- [ADR-028](#adr-028-gaussian-basis-prior-on-non-stationary-spde-basis-coefficients--match-r-inlas-thetapriormeanthetapriorprec-per-coefficient-parameterisation-defer-pc-on-basis-norm) — Gaussian-basis prior, non-stationary SPDE
+- [ADR-029](#adr-029-kroneckercomponent--generic-two-component-kronecker-composer-for-separable-space-time-gmrfs) — `KroneckerComponent` separable space-time
+- [ADR-030](#adr-030-fractional-α-spde-bolin-kirchner-2020--deferred-to-v021-phase-m-closes-at-pr-6) — fractional-α SPDE deferred
+- [ADR-032](#adr-032-mesh-utilities-maturity--alpha-shape-boundary-tuple-max_edge-boundary-pre-subdivision) — mesh utilities maturity
+- [ADR-036](#adr-036-spde2-retains-inlamesh-so-the-lgm-extension-can-build-a-meshprojector-at-runtime) — `SPDE2` retains `INLAMesh`
+
+**`@lgm` formula syntax**
+- [ADR-033](#adr-033-multi-likelihood-formula-syntax--tuple-lhs-y1-y2--rhs) — multi-likelihood tuple-LHS
+- [ADR-034](#adr-034-implicit-f-term-naming-via-column-symbol) — implicit f-term naming
+- [ADR-035](#adr-035-lgm-replicate--group-routing--runtime-wrap-calls-in-the-components-tuple) — `replicate` / `group` routing
+- [ADR-037](#adr-037-lgm-accepts-tuple-coordinate-first-arg-in-f-arity--2-3-only) — tuple-coordinate first arg in `f(...)`
+- [ADR-038](#adr-038-kroneckercomponent-space-time-lgm-form-takes-a-3-tuple-coordinate-design-block-is-a-sparse-khatri-rao-matrix) — Kronecker space-time 3-tuple
+
+**Raster / geo-spatial**
+- [ADR-040](#adr-040-predict_rastermodel-res---gaussian-summary--sample-based-path-with-exceedance-wrapper) — `predict_raster(model, res, …)` overloads
+- [ADR-041](#adr-041-crs-policy--predict_raster-rejects-mismatched-crs-at-the-api-boundary-mesh_crs-keyword-is-opt-in) — CRS policy via `mesh_crs` keyword
+
+**Testing & triangulation**
+- [ADR-043](#adr-043-genjl-second-mcmc-sanity-check--deferred-to-v1x-v10-ships-nuts-only-triangulation) — Gen.jl deferred to v1.x
+- [ADR-044](#adr-044-tier-3-triangulation-tolerances-at-v10--tol_mean--15-sds-tol_sd--060-uniformly) — tier-3 v1.0 tolerances
 
 ---
 
@@ -159,7 +229,7 @@ Re-evaluate once misaligned and joint-likelihood models land in Phase 5.
 
 ## ADR-006: Full Laplace is the Phase-3 default; `simplified.laplace` deferred
 
-Status: Accepted
+Status: Accepted, amended 2026-04-30 — see ADR-016
 Date: 2026-04
 
 ### Context
@@ -710,7 +780,7 @@ picture (late Phase 1). The true state is through Phase 4 M6-A.
 
 ## ADR-015: `LGMFormula.jl` and `GMRFsPardiso.jl` both cut from v0.1; deferred to v0.2
 
-Status: Accepted
+Status: Accepted; LGMFormula.jl realised v0.2.2 (Phase N); GMRFsPardiso.jl still deferred (see Phase Q PR-1 ledger flip)
 Date: 2026-04-26
 
 ### Context
@@ -2561,6 +2631,153 @@ ergonomic alternative, not a replacement.
 
 ---
 
+## ADR-025: `UserComponent` callback signature (R-INLA `rgeneric`)
+
+Status: Accepted
+Date: 2026-05-04
+
+### Context
+
+Phase L PR-2 ships [`UserComponent`](../packages/LatentGaussianModels.jl/src/components/user_component.jl),
+the R-INLA `rgeneric` equivalent: a one-line callable wrapper around
+the [`AbstractLatentComponent`](../packages/LatentGaussianModels.jl/src/components/abstract.jl)
+contract that lets users port R-INLA `rgeneric` model definitions
+without subtyping. This is the most-used extension hook in published
+R-INLA papers and the determinant of how much of R-INLA's long-tail
+component library (`crw2`, `besag2`, `besagproper`, `clinear`, `z`,
+`ou`, …) we can avoid implementing natively.
+
+Two design questions need a durable answer:
+
+1. **Return shape of the callable.** Positional tuple, named tuple,
+   multiple-return, struct? Each has trade-offs in extensibility and
+   readability.
+2. **Does `UserComponent` replace direct subtyping, supplement it, or
+   subsume one within the other?** The contract has eight methods of
+   varying optionality; not all of them fit a single callable cleanly.
+
+ADR-003 already commits to multiple-dispatch as the primary extension
+mechanism. `UserComponent` is the *callable* surface over the same
+seam, not a parallel mechanism — the question is how the surface
+relates to the seam underneath.
+
+The `cgeneric` part of R-INLA (C-callable user components) is dropped
+from scope (see [`plans/conti-valiant-pebble.md`](../plans/conti-valiant-pebble.md)
+§Scope decision): Julia callables are JIT-compiled to native code, so
+there is no measurable performance gap with C, and an FFI layer would
+*cost* speed.
+
+### Decision
+
+1. **The callable returns a `NamedTuple`**, not a positional tuple
+   or multiple values. The required key is `:Q` (sparse precision
+   matrix); optional keys with defaults are `:log_prior` (default `0`),
+   `:log_normc` (default `0`), and `:constraint` (default
+   `NoConstraint()`).
+
+   Adding a fifth key in a future release (e.g. `:prior_mean` for
+   ADR-023 hot paths) is non-breaking — existing callables stay
+   silent on the new key and pick up the default. A positional tuple
+   would force every caller to update on extension.
+
+2. **The constraint is read once at construction time** by invoking
+   the callable at `θ0` and caching the returned `:constraint`.
+   `GMRFs.constraints(c)` is θ-independent in our seam; mirroring
+   that, `UserComponent` documents that the constraint must be
+   θ-independent (or, equivalently, that only its θ0-value is
+   honoured). This matches R-INLA's rgeneric, where `extraconstr`
+   is set at `f()` time, not in the rgeneric callback.
+
+3. **`UserComponent` and direct subtyping ship side-by-side.** The
+   power-user path (subtyping `AbstractLatentComponent` directly) is
+   already proved by `Generic0` / `Generic1` / `Generic2` and is
+   needed for cases where the callable is too narrow:
+   - Component-specific overrides of `prior_mean(c, θ)` (ADR-023)
+     for shifted-prior measurement-error components (`MEC`).
+   - Custom `gmrf(c, θ)` factorisations that bypass the default
+     `Generic0GMRF` wrapper.
+   - Lazy/structured precision matrices that don't fit the
+     `SparseMatrixCSC` mould.
+
+   `UserComponent` covers everything else with one closure. The two
+   are complementary, and `docs/src/extending.md` documents both as
+   first-class extension paths rather than tiered alternatives.
+
+4. **`@ccall` is the C-library bridge.** Users with existing C
+   precision-matrix routines call them inside the Julia closure via
+   `@ccall`. There is no separate `CGenericComponent` type and no
+   plan to add one. The `UserComponent` docstring carries a one-
+   paragraph note pointing this out; it does not need its own ADR.
+
+### Consequences
+
+#### Positive
+
+- **R-INLA users port models in one closure**: `crw2`, `besag2`,
+  `clinear`, `z` etc. become a single function literal each. The
+  Phase L `crw2` vignette (PR-6) is the proof.
+- **Extension is non-breaking**: adding new optional keys to the
+  returned `NamedTuple` does not break existing callables.
+- **No FFI surface to maintain**: dropping `cgeneric` removes a
+  C-API drift risk and a build-system dependency.
+- **One-shot validation**: the constructor invokes the callable
+  once at `θ0`, surfacing wrong return shapes / wrong-size `Q` /
+  bad constraint types as `ArgumentError` / `DimensionMismatch`
+  during model construction rather than mid-Newton.
+
+#### Negative / Trade-offs
+
+- **Repeated callable invocations.** `precision_matrix`,
+  `log_hyperprior`, and `log_normalizing_constant` each call the
+  closure separately at the same θ. For an expensive precision
+  build this triples the work per integration point. Users wanting
+  to amortise can cache via `Memoize.jl` or hand-rolled state — the
+  v0.1 contract is "call lazily; user owns memoisation".
+- **θ-independent constraint is a real constraint on the API.**
+  Models where the constraint genuinely depends on θ (rare; would
+  e.g. model regime switches in the null space) must subtype
+  `AbstractLatentComponent` directly. This is documented in the
+  `UserComponent` docstring and is unlikely to bite anyone in v0.x.
+
+#### Neutral
+
+- **`prior_mean` is not in the callable.** ADR-023 makes
+  `prior_mean(c, θ)` load-bearing in the Newton hot path, but the
+  vast majority of components return zeros. We may add `:prior_mean`
+  as an optional key in a future minor release without breaking
+  existing callables (point 1 above).
+
+### Acceptance criteria
+
+- `UserComponent` reproducing a `Generic0` agrees with the native
+  `Generic0` posterior to `1e-10` on a realistic `inla()` fit
+  (Gaussian likelihood + tridiagonal SPD structure matrix). ✓
+  ([`test/regression/test_user_component.jl`](../packages/LatentGaussianModels.jl/test/regression/test_user_component.jl))
+- The intrinsic-with-sum-to-zero-constraint variant agrees to the
+  same tolerance under the same fit configuration. ✓
+- Construction-time validation surfaces wrong-size `Q`, missing
+  `:Q`, and non-`NamedTuple` returns as user-facing errors. ✓
+- The full LGM test suite (28 oracle fixtures, 2535+ regression
+  assertions) passes unchanged after PR-2 lands. ✓
+
+### References
+
+- [`plans/conti-valiant-pebble.md`](../plans/conti-valiant-pebble.md)
+  §PR-2 — the implementation plan.
+- R-INLA `rgeneric` documentation: `inla.doc("rgeneric")`.
+- [Generic0 implementation](../packages/LatentGaussianModels.jl/src/components/generic0.jl)
+  — the natural-language reference for "what does a callable need
+  to return?". `UserComponent`'s required signature mirrors
+  `Generic0`'s required methods.
+- ADR-003 — "subtype + multiple dispatch over macros" — the
+  architectural commitment that makes `UserComponent` a *surface*
+  rather than a *parallel mechanism*.
+- ADR-023 — `prior_mean` promoted to load-bearing; informs why
+  `:prior_mean` is reserved for a future namedtuple key rather than
+  shipped now.
+
+---
+
 ## ADR-026: Marginal strategies via `AbstractMarginalStrategy` type dispatch
 
 Status: Accepted
@@ -2725,153 +2942,6 @@ returns the Rue-Martino shift / Edgeworth-corrected mixture;
 - `_resolve_scheme(::Symbol, ::Int)` at
   [`packages/LatentGaussianModels.jl/src/inference/inla.jl:95-102`](../packages/LatentGaussianModels.jl/src/inference/inla.jl)
   — pattern this ADR generalises.
-
----
-
-## ADR-025: `UserComponent` callback signature (R-INLA `rgeneric`)
-
-Status: Accepted
-Date: 2026-05-04
-
-### Context
-
-Phase L PR-2 ships [`UserComponent`](../packages/LatentGaussianModels.jl/src/components/user_component.jl),
-the R-INLA `rgeneric` equivalent: a one-line callable wrapper around
-the [`AbstractLatentComponent`](../packages/LatentGaussianModels.jl/src/components/abstract.jl)
-contract that lets users port R-INLA `rgeneric` model definitions
-without subtyping. This is the most-used extension hook in published
-R-INLA papers and the determinant of how much of R-INLA's long-tail
-component library (`crw2`, `besag2`, `besagproper`, `clinear`, `z`,
-`ou`, …) we can avoid implementing natively.
-
-Two design questions need a durable answer:
-
-1. **Return shape of the callable.** Positional tuple, named tuple,
-   multiple-return, struct? Each has trade-offs in extensibility and
-   readability.
-2. **Does `UserComponent` replace direct subtyping, supplement it, or
-   subsume one within the other?** The contract has eight methods of
-   varying optionality; not all of them fit a single callable cleanly.
-
-ADR-003 already commits to multiple-dispatch as the primary extension
-mechanism. `UserComponent` is the *callable* surface over the same
-seam, not a parallel mechanism — the question is how the surface
-relates to the seam underneath.
-
-The `cgeneric` part of R-INLA (C-callable user components) is dropped
-from scope (see [`plans/conti-valiant-pebble.md`](../plans/conti-valiant-pebble.md)
-§Scope decision): Julia callables are JIT-compiled to native code, so
-there is no measurable performance gap with C, and an FFI layer would
-*cost* speed.
-
-### Decision
-
-1. **The callable returns a `NamedTuple`**, not a positional tuple
-   or multiple values. The required key is `:Q` (sparse precision
-   matrix); optional keys with defaults are `:log_prior` (default `0`),
-   `:log_normc` (default `0`), and `:constraint` (default
-   `NoConstraint()`).
-
-   Adding a fifth key in a future release (e.g. `:prior_mean` for
-   ADR-023 hot paths) is non-breaking — existing callables stay
-   silent on the new key and pick up the default. A positional tuple
-   would force every caller to update on extension.
-
-2. **The constraint is read once at construction time** by invoking
-   the callable at `θ0` and caching the returned `:constraint`.
-   `GMRFs.constraints(c)` is θ-independent in our seam; mirroring
-   that, `UserComponent` documents that the constraint must be
-   θ-independent (or, equivalently, that only its θ0-value is
-   honoured). This matches R-INLA's rgeneric, where `extraconstr`
-   is set at `f()` time, not in the rgeneric callback.
-
-3. **`UserComponent` and direct subtyping ship side-by-side.** The
-   power-user path (subtyping `AbstractLatentComponent` directly) is
-   already proved by `Generic0` / `Generic1` / `Generic2` and is
-   needed for cases where the callable is too narrow:
-   - Component-specific overrides of `prior_mean(c, θ)` (ADR-023)
-     for shifted-prior measurement-error components (`MEC`).
-   - Custom `gmrf(c, θ)` factorisations that bypass the default
-     `Generic0GMRF` wrapper.
-   - Lazy/structured precision matrices that don't fit the
-     `SparseMatrixCSC` mould.
-
-   `UserComponent` covers everything else with one closure. The two
-   are complementary, and `docs/src/extending.md` documents both as
-   first-class extension paths rather than tiered alternatives.
-
-4. **`@ccall` is the C-library bridge.** Users with existing C
-   precision-matrix routines call them inside the Julia closure via
-   `@ccall`. There is no separate `CGenericComponent` type and no
-   plan to add one. The `UserComponent` docstring carries a one-
-   paragraph note pointing this out; it does not need its own ADR.
-
-### Consequences
-
-#### Positive
-
-- **R-INLA users port models in one closure**: `crw2`, `besag2`,
-  `clinear`, `z` etc. become a single function literal each. The
-  Phase L `crw2` vignette (PR-6) is the proof.
-- **Extension is non-breaking**: adding new optional keys to the
-  returned `NamedTuple` does not break existing callables.
-- **No FFI surface to maintain**: dropping `cgeneric` removes a
-  C-API drift risk and a build-system dependency.
-- **One-shot validation**: the constructor invokes the callable
-  once at `θ0`, surfacing wrong return shapes / wrong-size `Q` /
-  bad constraint types as `ArgumentError` / `DimensionMismatch`
-  during model construction rather than mid-Newton.
-
-#### Negative / Trade-offs
-
-- **Repeated callable invocations.** `precision_matrix`,
-  `log_hyperprior`, and `log_normalizing_constant` each call the
-  closure separately at the same θ. For an expensive precision
-  build this triples the work per integration point. Users wanting
-  to amortise can cache via `Memoize.jl` or hand-rolled state — the
-  v0.1 contract is "call lazily; user owns memoisation".
-- **θ-independent constraint is a real constraint on the API.**
-  Models where the constraint genuinely depends on θ (rare; would
-  e.g. model regime switches in the null space) must subtype
-  `AbstractLatentComponent` directly. This is documented in the
-  `UserComponent` docstring and is unlikely to bite anyone in v0.x.
-
-#### Neutral
-
-- **`prior_mean` is not in the callable.** ADR-023 makes
-  `prior_mean(c, θ)` load-bearing in the Newton hot path, but the
-  vast majority of components return zeros. We may add `:prior_mean`
-  as an optional key in a future minor release without breaking
-  existing callables (point 1 above).
-
-### Acceptance criteria
-
-- `UserComponent` reproducing a `Generic0` agrees with the native
-  `Generic0` posterior to `1e-10` on a realistic `inla()` fit
-  (Gaussian likelihood + tridiagonal SPD structure matrix). ✓
-  ([`test/regression/test_user_component.jl`](../packages/LatentGaussianModels.jl/test/regression/test_user_component.jl))
-- The intrinsic-with-sum-to-zero-constraint variant agrees to the
-  same tolerance under the same fit configuration. ✓
-- Construction-time validation surfaces wrong-size `Q`, missing
-  `:Q`, and non-`NamedTuple` returns as user-facing errors. ✓
-- The full LGM test suite (28 oracle fixtures, 2535+ regression
-  assertions) passes unchanged after PR-2 lands. ✓
-
-### References
-
-- [`plans/conti-valiant-pebble.md`](../plans/conti-valiant-pebble.md)
-  §PR-2 — the implementation plan.
-- R-INLA `rgeneric` documentation: `inla.doc("rgeneric")`.
-- [Generic0 implementation](../packages/LatentGaussianModels.jl/src/components/generic0.jl)
-  — the natural-language reference for "what does a callable need
-  to return?". `UserComponent`'s required signature mirrors
-  `Generic0`'s required methods.
-- ADR-003 — "subtype + multiple dispatch over macros" — the
-  architectural commitment that makes `UserComponent` a *surface*
-  rather than a *parallel mechanism*.
-- ADR-023 — `prior_mean` promoted to load-bearing; informs why
-  `:prior_mean` is reserved for a future namedtuple key rather than
-  shipped now.
 
 ---
 
@@ -3301,6 +3371,251 @@ in `LatentGaussianModels.jl`. Concretely:
 
 ---
 
+## ADR-030: Fractional-α SPDE (Bolin-Kirchner 2020) — deferred to v0.2.1+; Phase M closes at PR-6
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase M's plan
+([`plans/conti-valiant-pebble.md`](conti-valiant-pebble.md)) carried a
+stretch tail PR-7 — fractional-α SPDE via the Bolin-Kirchner 2020
+rational approximation:
+
+```math
+(\kappa^2 - \Delta)^{-\alpha/2} \approx \sum_{k=1}^{m} r_k \,
+    (\kappa^2 - \Delta + s_k)^{-1}
+```
+
+with poles `s_k > 0` and weights `r_k` from a degree-`m` Padé fit. The
+plan suggested implementing `SPDEFractional` as "a sum of `m`
+integer-α=1 SPDE precision matrices with shifted κ", with default
+`m = 4` covering `α ∈ (0.5, 2.5)` to ~3 digits of accuracy.
+
+Phase M PRs 1–6 closed cleanly (KroneckerMapping, 1D SPDE,
+non-stationary SPDE, PD-failure safety net, separable space-time,
+mesh utilities maturity). With the stretch tail nominally available,
+the natural moment to either commit to PR-7 or document the deferral
+is now — before tagging v0.2.0.
+
+A closer read of Bolin-Kirchner 2020 ("The Rational SPDE Approach for
+Gaussian Random Fields With General Smoothness", JCGS 29(2),
+arXiv:1711.04333) and the production reference implementation at
+[`finnlindgren/rSPDE`](https://github.com/finnlindgren/rSPDE) surfaced
+three things:
+
+1. **The plan's "sum of integer-α=1 precision matrices" sketch is
+   wrong, mathematically.** Rational approximation of the *covariance*
+   operator gives a sum of integer-α covariances; that is **not** a
+   sum of precisions. If `Σ_α ≈ Σ_k r_k · Σ_{α=1, κ_k}`, then the
+   precision is the inverse of that sum — *dense*, not sparse, and
+   not equal to `Σ_k r_k · Q_{α=1, κ_k}`. The naive sum-of-precisions
+   formula yields a different covariance operator entirely, with no
+   theoretical link to the fractional Matérn target.
+
+2. **The correct rational-SPDE construction needs state augmentation.**
+   Following Bolin-Kirchner §2.3 and the rSPDE implementation, the
+   sparse-precision-preserving form introduces auxiliary fields
+   `v_k ∈ ℝ^{n_v}` for `k = 1, …, m`, each satisfying a stationary
+   integer-α=1 SPDE `(K + s_k C̃) v_k = √(C̃) W_k` with independent
+   white noise `W_k`. The field of interest is the linear combination
+   `u = Σ_k √(r_k) · v_k`. The joint state `(v_1, …, v_m)` has
+   *block-diagonal* sparse precision of size `m·n_v × m·n_v`; the
+   marginal precision on `u` alone is *dense*. SPDE inference therefore
+   requires fitting on the augmented `m·n_v`-dimensional latent
+   vector, with a partial observation operator that reads off
+   `u(s_obs) = Σ_k √(r_k) · A_obs · v_k`.
+
+3. **This doesn't fit cleanly into LGM's per-vertex
+   `AbstractLatentComponent` contract.** The contract
+   ([`packages/LatentGaussianModels.jl/src/components/abstract.jl`](../packages/LatentGaussianModels.jl/src/components/abstract.jl))
+   assumes one component owns one scalar field of dimension `length(c)`
+   with one sparse `precision_matrix(c, θ) -> SparseMatrixCSC`. The
+   rational-SPDE construction violates this in two places: (a) the
+   "field of interest" `u` is *not* the latent vector — it is a
+   linear functional of the augmented state; (b) the
+   `MeshProjector` A-matrix maps mesh vertices to observation points
+   for *one* field, not for `m` stacked auxiliary fields tied by a
+   summation operator.
+
+   Concretely, fitting a rational-SPDE component would need either:
+   - A new `AugmentedComponent` abstraction wrapping `m` integer-α
+     SPDE2 components plus a "summation observation operator" — an
+     `AbstractObservationMapping` (per ADR-017) that does
+     `Σ_k √(r_k) · A_obs · v_k` instead of `A_obs · u`; or
+   - An adapter that lifts `(SPDE2, SPDE2, …, SPDE2)` through a custom
+     `MeshProjector` and synthesises a single virtual `precision_matrix`
+     by stacking the block-diagonal augmented precision — but this
+     leaks the augmentation up to the LGM solver and breaks the
+     `length(c) = n_v` invariant assumed by `prior_mean`,
+     `constraints`, marginal-strategy code, and the inner Newton hot
+     path.
+
+   The first option is structurally clean but is multi-day work — a
+   new abstraction in LatentGaussianModels.jl, a new observation
+   mapping subtype, and end-to-end coverage of the Newton/Laplace
+   path with augmented latents. That is not a "stretch tail" item; it
+   is a phase-shape change.
+
+4. **No predecessor port path.** The user's predecessor
+   `IntegratedNestedLaplace.jl` does not implement fractional-α. There
+   is no existing kernel to graduate — PR-7 is a fresh write
+   regardless. Stretch-tail justification for shipping in Phase M
+   relied on the plan's (incorrect) "shifted-κ sum of precisions"
+   sketch; once the actual construction is in view, the LOC budget
+   is closer to PR-3's port (~500 LOC across LGM + INLASPDE) than
+   PR-6's mesh utilities work (~250 LOC, single package).
+
+5. **No oracle-fixture obligation.** The replan's three Phase M
+   oracles (synthetic 1D, Lindgren-Rue-Lindström §3.2, Cameletti
+   PM10) all landed with PRs 2/3/5; PR-7 was always a stretch with no
+   gating fixture. Deferring it does not move the phase-close gate.
+
+### Decision
+
+1. **Phase M closes at PR-6.** No fractional-α SPDE in v0.2.0. The
+   replan's Phase M scope item (5/5) ships as documented-but-deferred,
+   mirroring the v0.x discipline that "stretch" means "ship if the
+   architecture happens to fit, defer otherwise" (precedent: ADR-027,
+   PR-7(b) IS-correction; ADR-015, `LGMFormula.jl` /
+   `GMRFsPardiso.jl` deferred from v0.1).
+
+2. **The deferral target is v0.2.1+, not "Phase M+1".** Fractional-α
+   SPDE is a single component with a localised infrastructure
+   prerequisite (the augmentation seam in LGM); it does not need its
+   own phase. When the prerequisite work lands — either as a v0.2.x
+   minor item or as part of a future phase that has independent need
+   for `AbstractObservationMapping` extensions — the SPDE component
+   is then ~1 PR of pure rational-approximation arithmetic on top.
+
+3. **The infrastructure prerequisite is named explicitly**:
+   `AugmentedLatentComponent` (or equivalent) in
+   `LatentGaussianModels.jl` that lets one logical "field of interest"
+   be a linear functional of a stacked block-diagonal latent vector,
+   with a paired `AbstractObservationMapping` subtype that performs
+   the summation. This is general-purpose: it covers rational-SPDE,
+   the SPDE-on-sphere construction (which uses a similar
+   augmentation), and any future model whose "user-facing field" is
+   a linear combination of multiple latent components. It is **not**
+   committed to v0.2.x — it lands when a use case arrives.
+
+4. **No `SPDEFractional` skeleton ships.** No placeholder struct, no
+   throwing constructor, no documented-but-empty API surface. The
+   v0.2.0 release ships `SPDE2` (α ∈ {1, 2}, 2D), `SPDE1D`
+   (α ∈ {1, 2}, 1D), `SPDE2NonStationary` (α ∈ {1, 2}, 2D,
+   per-vertex `(τ, κ)`), and the Kronecker composer. Fractional-α is
+   absent — users who need it know to wait, not to find a half-built
+   API.
+
+5. **The replan's Phase M scope of 5 items closes as 4 items shipped
+   + 1 deferred.** This is honest and traceable; the alternative
+   (rushing a structurally-wrong implementation through stretch
+   bandwidth) would have created technical debt the v0.2.x line
+   would then have to unwind.
+
+### Consequences
+
+#### Positive
+
+- v0.2.0 ships on schedule (Phase M week 8, against an 8–12 week
+  replan estimate).
+- No half-built fractional-α API surface for users to hit and
+  discover is broken. R-INLA users moving SPDE workflows get a clean
+  v0.2.0 with the four shipped SPDE components and a documented
+  "fractional-α: see v0.2.x roadmap" gap.
+- Surfaces the real prerequisite — the `AugmentedLatentComponent`
+  seam — as a discoverable infrastructure item rather than a
+  hidden cost inside an SPDE component PR. When the seam lands, it
+  benefits other models (sphere SPDE, multi-resolution analysis)
+  beyond fractional-α.
+- Resolves the tension between the plan's mathematical sketch and
+  the production rational-SPDE construction. Future-Phase work
+  starts from the right baseline (`rSPDE`'s state-augmentation form),
+  not from a sum-of-precisions misreading.
+
+#### Neutral
+
+- Replan scope-completion drops to 4/5 for Phase M. The remaining
+  item is the only one whose deferral does not move a flagship
+  workflow gate (the geostatistics flagship is satisfied by SPDE2 +
+  non-stationary + space-time; fractional-α is a smoothness
+  generalisation, not a workflow blocker).
+- v0.2.0's CHANGELOG and release notes will explicitly call out
+  fractional-α as out of scope; the docs landing page for SPDE will
+  link to this ADR.
+
+#### Negative
+
+- Users with α ∈ ℝ⁺ \ {1, 2} workflows must keep using R-INLA's
+  fractional-α path. The set of such users is small in practice —
+  Lindgren et al.'s default α=2 covers the published case studies
+  this project targets — but the set is not empty.
+- The `AugmentedLatentComponent` seam is now load-bearing future
+  work; if it never lands, fractional-α stays deferred indefinitely.
+  Mitigated by point 3 above: the seam has independent justification
+  (sphere SPDE, multi-resolution) and is not solely an SPDE concern.
+
+### What would unblock shipping
+
+Three items in order:
+
+1. **`AbstractObservationMapping` extension** — a `LinearCombinationMapping`
+   (or similar) subtype that applies `Σ_k w_k · A_k · x_k` to a
+   stacked latent vector `[x_1; …; x_m]`, with `apply!` /
+   `apply_adjoint!` matching the existing
+   [`observation_mapping.jl`](../packages/LatentGaussianModels.jl/src/observation_mapping.jl)
+   contract. The PR-1 KroneckerMapping is precedent for the
+   block-structured mapping pattern.
+2. **`AugmentedLatentComponent`** — a wrapper composing
+   `(component_1, …, component_m)` into a single
+   `AbstractLatentComponent` whose `length` is `Σ_k length(component_k)`,
+   `precision_matrix` is block-diagonal, and `log_hyperprior` sums
+   child priors. Distinct from `KroneckerComponent` (ADR-029): the
+   structure here is *block-diagonal* (independent fields tied at the
+   observation level), not Kronecker-product (separable joint).
+3. **`SPDEFractional` component** — given items 1 and 2, the
+   fractional-α SPDE is `AugmentedLatentComponent(SPDE1, SPDE1, …)`
+   with `m` shifted-κ child SPDEs and a `LinearCombinationMapping`
+   carrying the rational-approximation weights. The Padé/CF
+   computation of `(r_k, s_k)` is closed-form in `α` and `m`
+   (Bolin-Kirchner §3); ~50 LOC.
+
+Phase M+1 (or an interstitial v0.2.x release) is the natural home
+for items 1 and 2. Item 3 is then a single follow-up PR.
+
+### References
+
+- Bolin & Kirchner 2020, "The Rational SPDE Approach for Gaussian
+  Random Fields With General Smoothness", JCGS 29(2):274–285,
+  arXiv:1711.04333 — the rational-approximation construction; §2.3
+  gives the state-augmentation form, §3 gives the
+  Padé/contour-fraction computation of `(r_k, s_k)`.
+- [`finnlindgren/rSPDE`](https://github.com/finnlindgren/rSPDE) — the
+  production reference implementation; the augmented-state
+  formulation in [`R/operators.R`](https://github.com/finnlindgren/rSPDE/blob/main/R/operators.R)
+  is the implementation target when this ADR is unblocked.
+- [`packages/LatentGaussianModels.jl/src/components/abstract.jl`](../packages/LatentGaussianModels.jl/src/components/abstract.jl)
+  — the per-vertex contract that doesn't fit fractional-α; the seam
+  to extend.
+- ADR-017 — `AbstractObservationMapping` is the surface where the
+  `LinearCombinationMapping` will land.
+- ADR-029 — `KroneckerComponent` precedent for block-structured
+  composition; `AugmentedLatentComponent` is the block-diagonal
+  sibling.
+- ADR-027 — precedent for documenting a deferred replan item with
+  the architectural reason; the same pattern applied to PR-7(b)
+  IS-correction.
+- ADR-015 — precedent for v0.x deferral discipline; sub-packages
+  cut from v0.1 with named v0.2 promotion targets.
+- [`plans/conti-valiant-pebble.md`](conti-valiant-pebble.md) — Phase
+  M plan; PR-7 stretch criterion ("ship if PRs 1–6 close inside
+  week 8; defer to Phase M+1 if time-pressed") and the (now-known
+  incorrect) "sum of integer-α=1 SPDE precision matrices with
+  shifted κ" sketch.
+
+---
+
 ## ADR-031: Targeted exception classification in the Laplace bad-θ wrapper
 
 Status: Accepted
@@ -3604,248 +3919,156 @@ roundoff (~1e-12).
 
 ---
 
-## ADR-030: Fractional-α SPDE (Bolin-Kirchner 2020) — deferred to v0.2.1+; Phase M closes at PR-6
+## ADR-033: Multi-likelihood formula syntax — tuple-LHS `(y1, y2, …) ~ rhs`
 
 Status: Accepted
 Date: 2026-05-05
 
 ### Context
 
-Phase M's plan
-([`plans/conti-valiant-pebble.md`](conti-valiant-pebble.md)) carried a
-stretch tail PR-7 — fractional-α SPDE via the Bolin-Kirchner 2020
-rational approximation:
+Phase N PR-4 ([`plans/phase-n.md:153-192`](phase-n.md)) ships
+multi-likelihood support in `@lgm`: a single formula expression that
+fits a joint LGM with two or more `AbstractLikelihood` instances
+sharing one latent vector. Two surface candidates were on the table:
 
-```math
-(\kappa^2 - \Delta)^{-\alpha/2} \approx \sum_{k=1}^{m} r_k \,
-    (\kappa^2 - \Delta + s_k)^{-1}
-```
+1. **Tuple-LHS, Julia-idiomatic.** `(y1, y2) ~ 1 + f(idx, IID(n))`.
+   The macro expands the tuple into a `JointLikelihood([ℓ1, ℓ2])` and
+   builds a `StackedMapping` over the shared RHS.
+2. **R-INLA's stacked-Y form.** `Y ~ stack(...)` with a per-row
+   `family` vector encoding which row uses which likelihood. This is
+   how R-INLA's `inla(Y ~ ..., family = c("gaussian", "poisson"),
+   data = inla.stack(...))` works under the hood.
 
-with poles `s_k > 0` and weights `r_k` from a degree-`m` Padé fit. The
-plan suggested implementing `SPDEFractional` as "a sum of `m`
-integer-α=1 SPDE precision matrices with shifted κ", with default
-`m = 4` covering `α ∈ (0.5, 2.5)` to ~3 digits of accuracy.
+Both forms can express the same joint model; the question is which
+becomes the primary surface and which is a fallback.
 
-Phase M PRs 1–6 closed cleanly (KroneckerMapping, 1D SPDE,
-non-stationary SPDE, PD-failure safety net, separable space-time,
-mesh utilities maturity). With the stretch tail nominally available,
-the natural moment to either commit to PR-7 or document the deferral
-is now — before tagging v0.2.0.
-
-A closer read of Bolin-Kirchner 2020 ("The Rational SPDE Approach for
-Gaussian Random Fields With General Smoothness", JCGS 29(2),
-arXiv:1711.04333) and the production reference implementation at
-[`finnlindgren/rSPDE`](https://github.com/finnlindgren/rSPDE) surfaced
-three things:
-
-1. **The plan's "sum of integer-α=1 precision matrices" sketch is
-   wrong, mathematically.** Rational approximation of the *covariance*
-   operator gives a sum of integer-α covariances; that is **not** a
-   sum of precisions. If `Σ_α ≈ Σ_k r_k · Σ_{α=1, κ_k}`, then the
-   precision is the inverse of that sum — *dense*, not sparse, and
-   not equal to `Σ_k r_k · Q_{α=1, κ_k}`. The naive sum-of-precisions
-   formula yields a different covariance operator entirely, with no
-   theoretical link to the fractional Matérn target.
-
-2. **The correct rational-SPDE construction needs state augmentation.**
-   Following Bolin-Kirchner §2.3 and the rSPDE implementation, the
-   sparse-precision-preserving form introduces auxiliary fields
-   `v_k ∈ ℝ^{n_v}` for `k = 1, …, m`, each satisfying a stationary
-   integer-α=1 SPDE `(K + s_k C̃) v_k = √(C̃) W_k` with independent
-   white noise `W_k`. The field of interest is the linear combination
-   `u = Σ_k √(r_k) · v_k`. The joint state `(v_1, …, v_m)` has
-   *block-diagonal* sparse precision of size `m·n_v × m·n_v`; the
-   marginal precision on `u` alone is *dense*. SPDE inference therefore
-   requires fitting on the augmented `m·n_v`-dimensional latent
-   vector, with a partial observation operator that reads off
-   `u(s_obs) = Σ_k √(r_k) · A_obs · v_k`.
-
-3. **This doesn't fit cleanly into LGM's per-vertex
-   `AbstractLatentComponent` contract.** The contract
-   ([`packages/LatentGaussianModels.jl/src/components/abstract.jl`](../packages/LatentGaussianModels.jl/src/components/abstract.jl))
-   assumes one component owns one scalar field of dimension `length(c)`
-   with one sparse `precision_matrix(c, θ) -> SparseMatrixCSC`. The
-   rational-SPDE construction violates this in two places: (a) the
-   "field of interest" `u` is *not* the latent vector — it is a
-   linear functional of the augmented state; (b) the
-   `MeshProjector` A-matrix maps mesh vertices to observation points
-   for *one* field, not for `m` stacked auxiliary fields tied by a
-   summation operator.
-
-   Concretely, fitting a rational-SPDE component would need either:
-   - A new `AugmentedComponent` abstraction wrapping `m` integer-α
-     SPDE2 components plus a "summation observation operator" — an
-     `AbstractObservationMapping` (per ADR-017) that does
-     `Σ_k √(r_k) · A_obs · v_k` instead of `A_obs · u`; or
-   - An adapter that lifts `(SPDE2, SPDE2, …, SPDE2)` through a custom
-     `MeshProjector` and synthesises a single virtual `precision_matrix`
-     by stacking the block-diagonal augmented precision — but this
-     leaks the augmentation up to the LGM solver and breaks the
-     `length(c) = n_v` invariant assumed by `prior_mean`,
-     `constraints`, marginal-strategy code, and the inner Newton hot
-     path.
-
-   The first option is structurally clean but is multi-day work — a
-   new abstraction in LatentGaussianModels.jl, a new observation
-   mapping subtype, and end-to-end coverage of the Newton/Laplace
-   path with augmented latents. That is not a "stretch tail" item; it
-   is a phase-shape change.
-
-4. **No predecessor port path.** The user's predecessor
-   `IntegratedNestedLaplace.jl` does not implement fractional-α. There
-   is no existing kernel to graduate — PR-7 is a fresh write
-   regardless. Stretch-tail justification for shipping in Phase M
-   relied on the plan's (incorrect) "shifted-κ sum of precisions"
-   sketch; once the actual construction is in view, the LOC budget
-   is closer to PR-3's port (~500 LOC across LGM + INLASPDE) than
-   PR-6's mesh utilities work (~250 LOC, single package).
-
-5. **No oracle-fixture obligation.** The replan's three Phase M
-   oracles (synthetic 1D, Lindgren-Rue-Lindström §3.2, Cameletti
-   PM10) all landed with PRs 2/3/5; PR-7 was always a stretch with no
-   gating fixture. Deferring it does not move the phase-close gate.
+The shared-RHS-only constraint (every `f`-term applies to every
+likelihood) is enforced in PR-4. Per-likelihood RHS variation (e.g.
+Baghfalaki joint longitudinal-survival, where the survival predictor
+differs from the longitudinal predictor) requires a separate syntax
+extension and is deferred to PR-4b's `Copy` augmentation plus a
+"this f-term applies only to likelihood k" marker.
 
 ### Decision
 
-1. **Phase M closes at PR-6.** No fractional-α SPDE in v0.2.0. The
-   replan's Phase M scope item (5/5) ships as documented-but-deferred,
-   mirroring the v0.x discipline that "stretch" means "ship if the
-   architecture happens to fit, defer otherwise" (precedent: ADR-027,
-   PR-7(b) IS-correction; ADR-015, `LGMFormula.jl` /
-   `GMRFsPardiso.jl` deferred from v0.1).
+**Tuple-LHS as the primary surface.** `(y1, y2) ~ 1 + f(idx, IID(n))`
+expands to a `JointLikelihood` with one `StackedMapping` per
+likelihood, all wrapping the same shared `A` projector built from
+the RHS.
 
-2. **The deferral target is v0.2.1+, not "Phase M+1".** Fractional-α
-   SPDE is a single component with a localised infrastructure
-   prerequisite (the augmentation seam in LGM); it does not need its
-   own phase. When the prerequisite work lands — either as a v0.2.x
-   minor item or as part of a future phase that has independent need
-   for `AbstractObservationMapping` extensions — the SPDE component
-   is then ~1 PR of pure rational-approximation arithmetic on top.
+R-INLA's stacked-Y form is documented as a fallback users can write
+explicitly when they need long-format observation tables (a single
+`y` vector with a `type` column). The macro doesn't generate it
+automatically — long-format inputs are converted to wide-format
+inside the user's data prep.
 
-3. **The infrastructure prerequisite is named explicitly**:
-   `AugmentedLatentComponent` (or equivalent) in
-   `LatentGaussianModels.jl` that lets one logical "field of interest"
-   be a linear functional of a stacked block-diagonal latent vector,
-   with a paired `AbstractObservationMapping` subtype that performs
-   the summation. This is general-purpose: it covers rational-SPDE,
-   the SPDE-on-sphere construction (which uses a similar
-   augmentation), and any future model whose "user-facing field" is
-   a linear combination of multiple latent components. It is **not**
-   committed to v0.2.x — it lands when a use case arrives.
-
-4. **No `SPDEFractional` skeleton ships.** No placeholder struct, no
-   throwing constructor, no documented-but-empty API surface. The
-   v0.2.0 release ships `SPDE2` (α ∈ {1, 2}, 2D), `SPDE1D`
-   (α ∈ {1, 2}, 1D), `SPDE2NonStationary` (α ∈ {1, 2}, 2D,
-   per-vertex `(τ, κ)`), and the Kronecker composer. Fractional-α is
-   absent — users who need it know to wait, not to find a half-built
-   API.
-
-5. **The replan's Phase M scope of 5 items closes as 4 items shipped
-   + 1 deferred.** This is honest and traceable; the alternative
-   (rushing a structurally-wrong implementation through stretch
-   bandwidth) would have created technical debt the v0.2.x line
-   would then have to unwind.
+**Wide-format observations.** Each LHS column has length `n`; the
+stacked observation vector is `vcat(y1, y2, …)`. Mismatched column
+lengths or missing LHS columns surface as construction-time errors
+with concrete pointers ("column `:y2` has length 56, expected 67").
 
 ### Consequences
 
-#### Positive
+**Pros.**
 
-- v0.2.0 ships on schedule (Phase M week 8, against an 8–12 week
-  replan estimate).
-- No half-built fractional-α API surface for users to hit and
-  discover is broken. R-INLA users moving SPDE workflows get a clean
-  v0.2.0 with the four shipped SPDE components and a documented
-  "fractional-α: see v0.2.x roadmap" gap.
-- Surfaces the real prerequisite — the `AugmentedLatentComponent`
-  seam — as a discoverable infrastructure item rather than a
-  hidden cost inside an SPDE component PR. When the seam lands, it
-  benefits other models (sphere SPDE, multi-resolution analysis)
-  beyond fractional-α.
-- Resolves the tension between the plan's mathematical sketch and
-  the production rational-SPDE construction. Future-Phase work
-  starts from the right baseline (`rSPDE`'s state-augmentation form),
-  not from a sum-of-precisions misreading.
+- One-liner syntax for the joint case: `(y1, y2) ~ 1 + f(idx, …)`
+  reads like Julia destructuring, not like a new domain-specific
+  trick.
+- Matches the Julia ecosystem's tuple-pattern conventions
+  (`StatsModels`-style multi-response works the same way).
+- Wide-format input means each likelihood's data shape stays
+  observable in the source — long-format hides which row belongs
+  to which likelihood inside a `family` vector.
 
-#### Neutral
+**Cons.**
 
-- Replan scope-completion drops to 4/5 for Phase M. The remaining
-  item is the only one whose deferral does not move a flagship
-  workflow gate (the geostatistics flagship is satisfied by SPDE2 +
-  non-stationary + space-time; fractional-α is a smoothness
-  generalisation, not a workflow blocker).
-- v0.2.0's CHANGELOG and release notes will explicitly call out
-  fractional-α as out of scope; the docs landing page for SPDE will
-  link to this ADR.
-
-#### Negative
-
-- Users with α ∈ ℝ⁺ \ {1, 2} workflows must keep using R-INLA's
-  fractional-α path. The set of such users is small in practice —
-  Lindgren et al.'s default α=2 covers the published case studies
-  this project targets — but the set is not empty.
-- The `AugmentedLatentComponent` seam is now load-bearing future
-  work; if it never lands, fractional-α stays deferred indefinitely.
-  Mitigated by point 3 above: the seam has independent justification
-  (sphere SPDE, multi-resolution) and is not solely an SPDE concern.
-
-### What would unblock shipping
-
-Three items in order:
-
-1. **`AbstractObservationMapping` extension** — a `LinearCombinationMapping`
-   (or similar) subtype that applies `Σ_k w_k · A_k · x_k` to a
-   stacked latent vector `[x_1; …; x_m]`, with `apply!` /
-   `apply_adjoint!` matching the existing
-   [`observation_mapping.jl`](../packages/LatentGaussianModels.jl/src/observation_mapping.jl)
-   contract. The PR-1 KroneckerMapping is precedent for the
-   block-structured mapping pattern.
-2. **`AugmentedLatentComponent`** — a wrapper composing
-   `(component_1, …, component_m)` into a single
-   `AbstractLatentComponent` whose `length` is `Σ_k length(component_k)`,
-   `precision_matrix` is block-diagonal, and `log_hyperprior` sums
-   child priors. Distinct from `KroneckerComponent` (ADR-029): the
-   structure here is *block-diagonal* (independent fields tied at the
-   observation level), not Kronecker-product (separable joint).
-3. **`SPDEFractional` component** — given items 1 and 2, the
-   fractional-α SPDE is `AugmentedLatentComponent(SPDE1, SPDE1, …)`
-   with `m` shifted-κ child SPDEs and a `LinearCombinationMapping`
-   carrying the rational-approximation weights. The Padé/CF
-   computation of `(r_k, s_k)` is closed-form in `α` and `m`
-   (Bolin-Kirchner §3); ~50 LOC.
-
-Phase M+1 (or an interstitial v0.2.x release) is the natural home
-for items 1 and 2. Item 3 is then a single follow-up PR.
+- Long-format users have one extra reshape step before calling
+  `@lgm`. Documented in the migration guide vignette.
+- Per-likelihood RHS variation needs PR-4b — users with truly
+  per-likelihood predictors hit "not yet supported" until PR-4b.
 
 ### References
 
-- Bolin & Kirchner 2020, "The Rational SPDE Approach for Gaussian
-  Random Fields With General Smoothness", JCGS 29(2):274–285,
-  arXiv:1711.04333 — the rational-approximation construction; §2.3
-  gives the state-augmentation form, §3 gives the
-  Padé/contour-fraction computation of `(r_k, s_k)`.
-- [`finnlindgren/rSPDE`](https://github.com/finnlindgren/rSPDE) — the
-  production reference implementation; the augmented-state
-  formulation in [`R/operators.R`](https://github.com/finnlindgren/rSPDE/blob/main/R/operators.R)
-  is the implementation target when this ADR is unblocked.
-- [`packages/LatentGaussianModels.jl/src/components/abstract.jl`](../packages/LatentGaussianModels.jl/src/components/abstract.jl)
-  — the per-vertex contract that doesn't fit fractional-α; the seam
-  to extend.
-- ADR-017 — `AbstractObservationMapping` is the surface where the
-  `LinearCombinationMapping` will land.
-- ADR-029 — `KroneckerComponent` precedent for block-structured
-  composition; `AugmentedLatentComponent` is the block-diagonal
-  sibling.
-- ADR-027 — precedent for documenting a deferred replan item with
-  the architectural reason; the same pattern applied to PR-7(b)
-  IS-correction.
-- ADR-015 — precedent for v0.x deferral discipline; sub-packages
-  cut from v0.1 with named v0.2 promotion targets.
-- [`plans/conti-valiant-pebble.md`](conti-valiant-pebble.md) — Phase
-  M plan; PR-7 stretch criterion ("ship if PRs 1–6 close inside
-  week 8; defer to Phase M+1 if time-pressed") and the (now-known
-  incorrect) "sum of integer-α=1 SPDE precision matrices with
-  shifted κ" sketch.
+- [`plans/phase-n.md:176-180`](phase-n.md) — the original ADR-033
+  candidate framing.
+- `JointLikelihood` core type in
+  [`packages/LatentGaussianModels.jl/src/likelihoods/joint.jl`](../packages/LatentGaussianModels.jl/src/likelihoods/joint.jl).
+- `StackedMapping` in
+  [`packages/LatentGaussianModels.jl/src/observation_mapping.jl`](../packages/LatentGaussianModels.jl/src/observation_mapping.jl).
+
+---
+
+## ADR-034: Implicit f-term naming via column symbol
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Phase N PR-4b's `Copy` augmentation needs a way to refer to f-terms
+in the formula by name. Two candidates:
+
+(a) **Implicit naming via the column symbol.** `f(subject, IID(n))`
+    is automatically named `:subject`; `f(idx, IID(n))` is named
+    `:idx`. Users refer to the term as `copy = :subject`.
+
+(b) **Explicit `name = :foo` kwarg.** `f(subject, IID(n); name = :u)`
+    binds the term's name to `:u`, decoupled from the column symbol.
+
+R-INLA uses option (a) implicitly: `inla.stack` indexes terms by
+column name, and `f(group, model = "iid")` is reachable via
+`copy = "group"` in the predictor. The duplicate-column case
+(`f(year)` and `f(year, copy = …)`) is handled by R-INLA at the
+`inla.stack` level, not in the formula.
+
+### Decision
+
+**Option (a): implicit naming via the column symbol.** `f(col, ...)`
+binds the term's name to `:col` automatically. The formula
+
+```julia
+@lgm formula = (y1, y2) ~ 1 + f(subject, IID(n)) + f(group, IID(m))
+```
+
+emits two named f-terms `:subject` and `:group`. Augmentation later
+in the formula references them by symbol:
+
+```julia
+@lgm formula = (y1, y2) ~ 1 + f(subject, IID(n)) +
+                              f(subject; copy = :u, target = 2)
+```
+
+Per-likelihood targeting (which `Copy` lands on which likelihood's
+predictor) uses an explicit `target = k` kwarg, not the term name.
+
+The duplicate-column case is rare enough that we don't ship a
+`name = :foo` override in v0.2 — if it surfaces in a real workflow
+the kwarg is non-breaking to add.
+
+### Consequences
+
+**Pros.**
+
+- Zero ceremony for the common case: a single `f(col, …)` produces
+  one obviously-named term.
+- Mirrors R-INLA's `inla.stack` indexing-by-column convention,
+  which is how R-INLA users already think about the joint model.
+- Per-likelihood `target = k` is explicit — no implicit "first
+  likelihood gets the copy" rule to remember.
+
+**Cons.**
+
+- Two `f(col, …)` calls with the same first argument collide. In
+  v0.2 this is an error; an explicit `name =` kwarg is the natural
+  v0.3 escape hatch.
+
+### References
+
+- [`plans/phase-n.md:203-210`](phase-n.md) — original ADR-034
+  candidate framing.
+- `Copy` likelihood augmentation in
+  [`packages/LatentGaussianModels.jl/src/likelihoods/copy.jl`](../packages/LatentGaussianModels.jl/src/likelihoods/copy.jl).
+- R-INLA `inla.stack` documentation: `inla.doc("stack")`.
 
 ---
 
@@ -4450,19 +4673,429 @@ The extension `LGMFormulaINLASPDEExt`:
 
 ---
 
-## ADR template for future entries
+## ADR-040: `predict_raster(model, res, …)` — Gaussian summary + sample-based path with `Exceedance` wrapper
 
-```
-## ADR-NNN: Title
-
-Status: Accepted | Proposed | Superseded by ADR-MMM
-Date: YYYY-MM-DD
+Status: Accepted
+Date: 2026-05-06
 
 ### Context
 
+Phase O ([`plans/phase-o.md:91-147`](phase-o.md)) lifts the existing
+vertex-vector `predict_raster` and `quantile_rasters` primitives to
+the user-facing `(model, res, …)` shape. Two semantic axes need a
+durable answer:
+
+1. **Where do the vertex statistics come from?** Gaussian-approximation
+   slice (cheap, vertex-Gaussian view) vs. joint posterior draws
+   (expensive, captures non-Gaussian tails).
+2. **What does `quantity` accept?** Marginal mean / sd / Gaussian
+   intervals are well-defined under linear barycentric projection;
+   exceedance probabilities `P(u(s) > c | y)` are not (probabilities
+   don't compose linearly under barycentric averaging).
+
+The honest path for tail functionals is to draw joint samples,
+slice the SPDE block, project each draw through the same
+`MeshProjector`, then reduce column-wise per the requested quantity.
+
 ### Decision
+
+**Both paths ship.** Two overloads on a single user-facing entry:
+
+```julia
+predict_raster(model, res, template;
+               component, quantity = :mean, outside, missingval)
+predict_raster(rng, model, res, template;
+               component, quantity, n_samples,
+               outside, missingval)
+```
+
+- The Gaussian overload accepts `quantity ∈ (:mean, :sd, :lower,
+  :upper)` and reads `random_effects(model, res)` for the SPDE
+  component slice. Wraps the existing primitive; no new sampling
+  cost.
+- The sample-based overload accepts `quantity ∈ (:mean, q::Real ∈
+  [0, 1], Exceedance(c))`. Calls `posterior_sample(rng, res, model,
+  n_samples)`, slices the SPDE block via `model.latent_ranges[i]`,
+  applies the per-cell `MeshProjector` to the draw matrix in a
+  single sparse-dense GEMM, then reduces column-wise.
+
+`Exceedance{T}` is a tiny wrapper struct exported from
+`INLASPDERasters` so the dispatch is type-stable and the API
+self-documents at the call site:
+
+```julia
+predict_raster(rng, model, res, template;
+               quantity = Exceedance(2.5), n_samples = 1000)
+```
+
+**Performance contract.** The `MeshProjector` is built once per
+`predict_raster` call and reused across draws — `P.A * x_samples[spde_range, :]`
+is one sparse-dense GEMM and gives a `n_cells × n_samples` matrix.
+For 10⁶-cell rasters × 10³ draws this is the only tolerable shape;
+element-wise per-draw projection is 1000× slower.
 
 ### Consequences
 
-### References (if any)
+**Pros.**
+
+- Honest handling of tail functionals (`Exceedance`) — no silent
+  linear-projection lie that would mis-state `P(u > c)`.
+- One entry point with a `quantity` kwarg, matching R-INLA's
+  `inla.posterior.sample(...)` + post-processing pattern but
+  pre-fused into a single call.
+- Gaussian path stays cheap — users who only need posterior mean/sd
+  rasters never pay the sampling cost.
+
+**Cons.**
+
+- Two overloads on the same name. The `rng`-first overload is the
+  canonical sample-based form; the `rng`-less overload is the
+  Gaussian summary. Documented at the function docstring.
+- `Exceedance` adds one exported type to `INLASPDERasters`. Small
+  surface, self-documenting at the call site.
+
+### References
+
+- [`plans/phase-o.md:91-147`](phase-o.md) — original ADR-040
+  candidate framing.
+- `predict_raster` overloads in
+  [`packages/INLASPDERasters.jl/src/predict.jl`](../packages/INLASPDERasters.jl/src/predict.jl).
+- `Exceedance` in
+  [`packages/INLASPDERasters.jl/src/exceedance.jl`](../packages/INLASPDERasters.jl/src/exceedance.jl).
+- ADR-005 — projector matrix as a model field; same lazy
+  `MeshProjector` is reused here.
+
+---
+
+## ADR-041: CRS policy — `predict_raster` rejects mismatched CRS at the API boundary; `mesh_crs` keyword is opt-in
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+The `INLAMesh` struct does not carry CRS metadata
+([`packages/INLASPDE.jl/src/mesh/inla_mesh.jl:19-25`](../packages/INLASPDE.jl/src/mesh/inla_mesh.jl)).
+`Rasters.Raster` does, via `Rasters.crs(raster)`. Silent CRS
+mismatches between mesh and raster (e.g. WGS84 raster in degrees
+against a UTM mesh in metres) are the single most common geo
+foot-gun and produce wrong-but-not-obviously-wrong rasters.
+
+Three shapes were on the table:
+
+(a) **Reject mismatch silently — caller pre-projects.** The current
+    pre-Phase-O behaviour. Cheap, but unsafe.
+(b) **Add `mesh_crs::Union{Nothing, CRS} = nothing` keyword.** When
+    supplied, assert `mesh_crs == Rasters.crs(raster)` at the API
+    boundary; `nothing` keeps current "trust the caller" behaviour.
+    No `INLAMesh` change; `CoordRefSystems.jl` is already in
+    INLASPDE's deps.
+(c) **Promote `INLAMesh` to carry `crs::Union{Nothing, CRS}`.** Field
+    addition is a contract change; every Phase M oracle fixture
+    needs to round-trip the new field. Heavy.
+
+### Decision
+
+**Option (b): `mesh_crs` keyword.** `predict_raster(model, res,
+template; mesh_crs = nothing, …)` and `extract_at_mesh(...; mesh_crs
+= nothing, …)`. When `mesh_crs` is supplied, the API asserts
+equality against `Rasters.crs(template)` and throws
+`ArgumentError` with a concrete pointer if they disagree. When
+`nothing`, the existing "trust the caller" path is preserved
+verbatim.
+
+**Reprojection is out of scope.** Reprojecting the *raster* requires
+`Proj_jll` (already in INLASPDERasters' transitive closure), but
+reprojecting the *mesh* would mutate `mesh.points` in place, which
+invalidates the SPDE FEM matrices already assembled at model
+construction time. A `reproject = true` opt-in is deferred to v0.4
+with an explicit pre-condition that the caller reassemble FEM
+matrices on the reprojected mesh.
+
+Promote (c) — `INLAMesh.crs` field — when CRS becomes load-bearing
+elsewhere (sphere SPDE, geodesic distance priors, multi-CRS joint
+likelihoods). All deferred to v0.4+.
+
+### Consequences
+
+**Pros.**
+
+- Zero cost when the kwarg is omitted (back-compat with all v0.3.x
+  code).
+- Safety net activates with a single kwarg — concretely points at
+  the mismatch rather than silently producing wrong rasters.
+- No `INLAMesh` change — the struct stays Phase-M-compatible and
+  no oracle fixture needs to be re-generated.
+
+**Cons.**
+
+- The escape hatch is opt-in: silent-mismatch is still possible if
+  the user doesn't supply `mesh_crs`. Documented in the function
+  docstring and the Meuse vignette.
+- Reprojection is genuinely deferred — users with mismatched CRSs
+  must pre-project the raster themselves in v0.3.
+
+### References
+
+- [`plans/phase-o.md:149-186`](phase-o.md) — original ADR-041
+  candidate framing.
+- `predict_raster` / `extract_at_mesh` CRS keyword in
+  [`packages/INLASPDERasters.jl/src/predict.jl`](../packages/INLASPDERasters.jl/src/predict.jl).
+- `INLAMesh` definition in
+  [`packages/INLASPDE.jl/src/mesh/inla_mesh.jl:19-25`](../packages/INLASPDE.jl/src/mesh/inla_mesh.jl).
+
+---
+
+## ADR-042: INLASPDERasters takes a load-bearing dep on LatentGaussianModels via `(model, res, …)` overloads
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+The `INLASPDERasters/Project.toml` lists
+`LatentGaussianModels = "0.2"` even though, pre-Phase-O, no `src/`
+file imports LGM types. The dep was foreseen and accepted at
+scaffolding time ([`plans/dependencies.md:101`](dependencies.md))
+because the package's stated purpose is the raster-shaped sibling
+of LGM — it was a placeholder waiting for the user-facing surface.
+
+Phase O's `predict_raster(model, res, …)` overloads turn that latent
+dep into a load-bearing one: the function dispatches on
+`LatentGaussianModel`, reads `res.x_mean`, `res.x_var`,
+`model.latent_ranges`, and calls `random_effects(model, res)` and
+`posterior_sample(rng, res, model)`. INLASPDERasters now genuinely
+needs LGM at the API boundary, not just in tests.
+
+### Decision
+
+**Promote the dep from "declared but unused" to "load-bearing for
+the public API."** No code change to `[deps]`, just an explicit
+acknowledgement that:
+
+- INLASPDERasters depends on LGM's public LGM-result API
+  (`random_effects`, `posterior_sample`, `latent_ranges`).
+- LGM compat in `INLASPDERasters/Project.toml` is a real bound
+  going forward — bumping LGM major versions requires
+  re-validating the raster overloads.
+- LGM is in the *direct* `[deps]` rather than `[weakdeps]` because
+  the `(model, res, …)` overloads are the package's user-facing
+  surface, not an optional integration.
+
+The companion alternative — keeping LGM in `[weakdeps]` and
+shipping the overloads via an extension — was considered and
+rejected: the entire point of `INLASPDERasters` is the LGM-shaped
+surface; users who don't use LGM don't load this package.
+
+### Consequences
+
+**Pros.**
+
+- The package's purpose is unambiguous: it is the raster-shape
+  sibling of LGM, not a generic mesh-to-raster utility that LGM
+  happens to use.
+- Compat bumps are caught at `Pkg.resolve()` time rather than as
+  runtime `MethodError`s.
+
+**Cons.**
+
+- One more direct dep edge in the ecosystem dependency graph. Small
+  cost; the package was already shipping the dep in `Project.toml`.
+- Future re-layering ("split the LGM-shape overloads into a
+  weakdep extension") is a larger refactor than if we'd shipped
+  the weakdep route now. Justified by the package's stated
+  purpose.
+
+### References
+
+- [`plans/phase-o.md:188-205`](phase-o.md) — original ADR-042
+  candidate framing.
+- [`packages/INLASPDERasters.jl/Project.toml`](../packages/INLASPDERasters.jl/Project.toml)
+  `[deps]` table (LGM is a hard dep, not a weakdep).
+- [`plans/dependencies.md:101`](dependencies.md) — the original
+  scaffolding-time decision.
+
+---
+
+## ADR-043: Gen.jl second-MCMC sanity check — deferred to v1.x; v1.0 ships NUTS-only triangulation
+
+Status: Accepted
+Date: 2026-05-07
+
+### Context
+
+Phase P ([`plans/phase-p.md:115-148`](phase-p.md)) ships tier-3
+triangulation against NUTS via `LGMTuring.jl` as the v1.0
+load-bearing implementation. The question was whether v1.0 also
+ships a second Julia-HMC implementation through
+[Gen.jl](https://github.com/probcomp/Gen.jl) — a third column in
+the triangulation envelope (INLA / NUTS / Gen-HMC).
+
+Three options:
+
+- **(a) Ship Gen.jl in v1.0 as PR-1b.** Express the LGM
+  `LogDensityProblem` as a `@gen function`, run Gen's HMC sampler,
+  add a third column. Cost: ~1–2 days for translation + chain
+  authoring. Coverage gain: catches `AdvancedHMC`-specific bugs.
+- **(b) Defer Gen.jl to v1.x as a stretch lane.** Ship NUTS-only
+  triangulation in v1.0. Coverage at v1.0 is "INLA vs NUTS";
+  second-MCMC sanity is v1.x.
+- **(c) Skip Gen.jl entirely.** Cross-language verification (Stan,
+  NIMBLE) is the genuinely-independent triangulation; second-Julia-
+  HMC is a thin gain because both share the same AD ecosystem and
+  `LogDensityProblems` contract.
+
+### Decision
+
+**Option (b): defer to v1.x.** v1.0 ships NUTS-only triangulation
+on the three flagship models (Scotland BYM2, Pennsylvania BYM2,
+Meuse SPDE). Gen.jl integration is tracked as a v1.x backlog item.
+
+The user-trust argument for tier-3 at v1.0 is satisfied by NUTS-vs-
+INLA: NUTS is a fully-independent inference path with a different
+posterior representation (samples vs. grid), different mode-finder
+(leapfrog vs. BFGS), and different uncertainty quantification (MCMC
+vs. Laplace). Adding Gen.jl as a second Julia-HMC chain shares the
+same AD ecosystem (`ForwardDiff` / `ReverseDiff`) and the same
+`LogDensityProblems` contract, so the marginal coverage gain is
+small relative to the genuinely-cross-language Stan / NIMBLE path.
+
+If Gen.jl ships in v1.x, the integration shape is:
+
+- `packages/LGMTuring.jl/ext/LGMTuringGenExt.jl` — weakdep
+  extension.
+- `LGMTuring.gen_hmc_sample(model, y, n; rng, …)` wrapping
+  `Gen.hmc(...)` and returning an `MCMCChains.Chains`-shaped
+  result.
+- The existing `compare_posteriors(...)` harness reuses cleanly
+  for the three-way envelope.
+
+### Consequences
+
+**Pros.**
+
+- v1.0 ships on the originally-planned schedule; PR-1b stretch
+  doesn't gate the release.
+- The `compare_posteriors` harness is generic enough to absorb a
+  third sampler later — no v1.0 architecture work is owed.
+- ADR captures the tradeoff so a future maintainer doesn't re-ask
+  the question.
+
+**Cons.**
+
+- v1.0's triangulation envelope is two-way (INLA vs. NUTS), not
+  three-way. A NUTS-implementation bug that happens to also be
+  present in INLA would not be caught at v1.0.
+
+### References
+
+- [`plans/phase-p.md:115-148`](phase-p.md) — original ADR-043
+  candidate framing (option (b) recommended).
+- ADR-009 — Turing / HMC bridge in `LGMTuring.jl`; the load-bearing
+  v1.0 tier-3 implementation.
+- `compare_posteriors(...)` harness in
+  [`packages/LGMTuring.jl/test/triangulation/compare_posteriors.jl`](../packages/LGMTuring.jl/test/triangulation/compare_posteriors.jl).
+
+---
+
+## ADR-044: Tier-3 triangulation tolerances at v1.0 — `tol_mean = 1.5 SDs`, `tol_sd = 0.60` uniformly
+
+Status: Accepted
+Date: 2026-05-07
+
+### Context
+
+Phase P ([`plans/phase-p.md:150-191`](phase-p.md)) tightens the
+tier-3 NUTS-vs-INLA tolerances from the Phase J prototype levels
+(`tol_mean = 2.0 SDs`, `tol_sd = 0.30`) to v1.0 GA levels. With
+full chains (≥1000 post-warmup samples after 200 warmup) the noise
+floor is much tighter.
+
+Two options were on the table:
+
+- **(a) Per-test calibration.** Each model gets a tolerance derived
+  from the chain's effective sample size and the hyperparameter
+  dimensionality. Sound but expensive to maintain.
+- **(b) Uniform v1.0 tolerances.** Apply across all three flagship
+  models: `tol_mean = 1.5 SDs` (envelope: INLA / NUTS posteriors
+  agree within 1.5σ), `tol_sd = 0.60` (relative).
+
+The first cut of this ADR proposed `tol_sd = 0.15` ("tighter
+because chains are longer"). Empirical observation on both Scotland
+and PA flipped that recommendation: NUTS finds 30–45% wider
+posterior on the BYM2 mixing weight `logit φ` than INLA does. At
+1000-sample chains this is *not* MC-error-bounded, it's a real
+property of grid integration vs. full HMC. INLA's grid is bounded
+by the Hessian-explored region around the Laplace mode; NUTS
+samples the full posterior including the heavy tails of weakly
+identified mixing parameters.
+
+### Decision
+
+**Option (b): uniform v1.0 tolerances.** Apply across all three
+flagship triangulation tests:
+
+```julia
+tol_mean = 1.5  # standard deviations; INLA mean within 1.5σ of NUTS mean
+tol_sd   = 0.60 # relative; |sd_inla - sd_nuts| / sd_nuts ≤ 0.60
 ```
+
+The mean tolerance is tight (catches gradient bugs, precision-build
+bugs, mode-finder drift); the SD tolerance is loose because the SD
+diff between INLA's grid and NUTS is *structural*, not MC-noise.
+
+**Why `tol_sd = 0.60` and not 0.15.** Tightening `tol_sd` to 0.15
+would force either per-parameter tolerances (which rejects option
+(a)) or n=10k+ chains (10× nightly cost). The 0.60 envelope still
+flags genuine regressions:
+
+- A gradient bug blows SDs by 100%+ (caught easily at 0.60).
+- A precision-build bug shifts means by SDs (caught by `tol_mean`).
+- A mode-finder bug disagrees on both.
+
+The means agree within 0.06–0.23 SDs on both flagship Poisson-BYM2
+datasets — that's the load-bearing constraint. The SD envelope is
+the give-room for the structural inference-method difference.
+
+Tier-3 tolerances are not the place for per-model fine-tuning —
+that's tier-1's job. The tier-3 contract is "all available
+independent implementations land in the same envelope," and the
+envelope width should be wide enough to absorb known structural
+inference-method differences while still catching regressions.
+
+If ADR-043's option (a) flips and Gen.jl ships in v1.x, the same
+tolerances apply to the three-way envelope — Gen-HMC and NUTS
+share the same structural-grid-vs-HMC-tail behaviour against INLA.
+
+### Consequences
+
+**Pros.**
+
+- Single pair of tolerances for all three flagship triangulation
+  tests — easy to maintain, easy to reason about.
+- Catches the regression classes that matter (gradient,
+  precision-build, mode-finder) without flagging the structural
+  grid-vs-HMC SD difference as a bug.
+- Diagnostic `@info` log on flagged rows means failure modes are
+  visible in CI logs without re-running locally.
+
+**Cons.**
+
+- A genuine 30% SD regression on a single flagship would not flag
+  (within the 60% envelope). Tier-1's per-component oracle tests
+  catch this at 1% / 5% tolerances; tier-3's job is the joint
+  posterior shape, not per-parameter SDs.
+- Tightening v2.0 tolerances will require either more samples or
+  per-test calibration — design call deferred.
+
+### References
+
+- [`plans/phase-p.md:150-191`](phase-p.md) — original ADR-044
+  candidate framing, including the `tol_sd = 0.60 vs 0.15`
+  empirical pivot.
+- Tier-3 triangulation tests in
+  [`packages/LGMTuring.jl/test/triangulation/`](../packages/LGMTuring.jl/test/triangulation/)
+  (Scotland, PA, Meuse).
+- ADR-009 — `LGMTuring.jl` package; tier-3 implementation.
+- `compare_posteriors(...)` harness — emits the diagnostic rows
+  consumed by the tolerance gates.

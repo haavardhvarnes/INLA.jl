@@ -4,6 +4,242 @@ All notable changes to this repository are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.0] — 2026-MM-DD
+
+Phase P closes the v1.0 release arc. F–O delivered the R-INLA-parity
+numerical surface (likelihoods, components, priors, sampling,
+prediction, raster bridge, formula DSL); v1.0 closes the testing
+matrix (tier-3 NUTS triangulation across the three flagship
+workflows, performance benchmarks against R-INLA) and ships the
+top-level R-INLA → Julia migration guide.
+
+No new components, no new likelihoods, no new oracle gates compared
+to v0.3.0. v1.0 is a maturity release — the surface is the same,
+but the user-trust evidence is one tier deeper and the cross-
+implementation envelope is independently verified.
+
+Bumps every package's version-string to `1.0.0` and tightens
+`[deps]` / `[weakdeps]` compat to `"1"` across the ecosystem.
+
+Two new ADRs land in [`plans/decisions.md`](plans/decisions.md):
+ADR-043 (Gen.jl second-MCMC sanity check deferred to v1.x — v1.0
+ships NUTS-only triangulation) and ADR-044 (tier-3 v1.0 tolerances
+`tol_mean = 1.5 SDs`, `tol_sd = 0.60` uniformly across Scotland /
+PA / Meuse).
+
+PR-4 also consolidates the ADR backlog: backfills ADRs 033, 034
+(Phase N PR-4 / PR-4b), 040, 041, 042 (Phase O), 043, 044 (Phase P)
+that landed via PR commit messages but never made it into
+`decisions.md`; reorders ADR-025 / ADR-026 and ADR-030 / ADR-031 /
+ADR-032 into numerical body order; adds a topical index at the head
+of `decisions.md`. The body remains numerical-only — the topical
+index is a forward navigation aid, not a reorder.
+
+### Added — Phase P
+
+**Tier-3 NUTS triangulation (PR-1, ADR-044)**
+
+- **Scotland BYM2 v1.0 tier-3 test** — tightens
+  [`packages/LGMTuring.jl/test/triangulation/test_scotland_bym2.jl`](packages/LGMTuring.jl/test/triangulation/test_scotland_bym2.jl)
+  to `tol_mean = 1.5 SDs`, `tol_sd = 0.60`. 1000 post-warmup samples
+  after 200 warmup. Diagnostic `@info` log on flagged rows surfaces
+  failure modes in CI logs without re-running locally.
+- **Pennsylvania BYM2 v1.0 tier-3 test** — second canonical
+  Poisson-BYM2 (67 counties, denser W, indirect-standardised
+  expected counts). Catches BYM2 regressions that wouldn't surface
+  on Scotland's smaller graph.
+  [`test_pennsylvania_bym2.jl`](packages/LGMTuring.jl/test/triangulation/test_pennsylvania_bym2.jl).
+- **Meuse SPDE v1.0 tier-3 test** — geostatistics flagship
+  (Gaussian + Intercept + FixedEffects + SPDE2 α=2; latent dim
+  ≈ 355). Verifies the joint posterior on `(log τ_noise, log τ_spde,
+  log κ_spde)`. Gated behind `--triangulation` because each leapfrog
+  step costs a 355-dim Laplace fit (~10 min wall-clock). Runs
+  weekly on the nightly cron, not on PR builds.
+  [`test_meuse_spde.jl`](packages/LGMTuring.jl/test/triangulation/test_meuse_spde.jl).
+- **`--triangulation` CLI gate** for `LGMTuring.jl`'s test suite
+  ([`packages/LGMTuring.jl/test/runtests.jl`](packages/LGMTuring.jl/test/runtests.jl)),
+  plus weekly nightly cron at
+  [`.github/workflows/nightly-triangulation.yml`](.github/workflows/nightly-triangulation.yml)
+  (Mondays 05:00 UTC, one hour after `nightly-upstream`).
+
+**R-INLA → Julia migration guide (PR-2)**
+
+- **Top-level migration guide** at
+  [`docs/src/migration/r-inla-to-julia.md`](docs/src/migration/r-inla-to-julia.md)
+  — side-by-side R-INLA / INLA.jl translation for Scotland BYM2,
+  Pennsylvania BYM2, Tokyo seasonal AR1, Meuse SPDE, joint
+  longitudinal-survival, and zero-inflated count models. Maps every
+  R-INLA `family = "..."` string and `f(..., model = "...")` term to
+  its Julia equivalent.
+
+**Performance benchmark harness (PR-3)**
+
+- **`benchmarks/` directory at repo root** — `run.jl`,
+  `harness.jl`, `r_inla.R`, `compare.jl`, `Project.toml`. Times
+  Scotland BYM2, Pennsylvania BYM2, and Meuse SPDE on both INLA.jl
+  and R-INLA under single-threaded BLAS, writes the joint result to
+  `benchmarks/results/<date>_<arch>.md`. Methodology, version pins,
+  hardware spec all land in the result file's header. The
+  `[sources]` table in `benchmarks/Project.toml` points at the in-
+  tree packages so `Pkg.instantiate()` resolves them on first run
+  without registry round-trip.
+- **First results file** at
+  [`benchmarks/results/2026-05-07_apple_aarch64.md`](benchmarks/results/2026-05-07_apple_aarch64.md):
+  Scotland 0.07s vs 28.00s (392×), PA 0.11s vs 28.36s (247×), Meuse
+  1.18s vs 5.76s (5×). The areal-Poisson speedups are dominated by
+  R-INLA's per-fit C-binary startup overhead; the Meuse SPDE 5×
+  reflects the genuine numerical-work delta on a 355-dim latent.
+- **`docs/src/benchmarks/quality.md` "Performance vs R-INLA" section**
+  — embeds the headline table from the latest result file, links
+  to the full per-result markdown, documents reproduction.
+
+### Changed
+
+- Every package's `version` bumps to `1.0.0`:
+  - `GMRFs.jl` 0.1.2 → 1.0.0
+  - `LatentGaussianModels.jl` 0.2.0 → 1.0.0
+  - `INLASPDE.jl` 0.3.1 → 1.0.0
+  - `INLASPDERasters.jl` 0.4.0 → 1.0.0
+  - `LGMFormula.jl` 0.4.0 → 1.0.0
+  - `LGMTuring.jl` 0.1.0-DEV → 1.0.0
+  - Umbrella `INLA.jl` 0.3.0 → 1.0.0
+- All `[deps]` / `[weakdeps]` compat bounds across the ecosystem
+  pinned to `"1"` where they previously targeted `"0.x"` siblings.
+
+### Notes
+
+- `v1.0.0` is a maturity release, not a feature release. The
+  numerical surface is the same as `v0.3.0`; what changes is the
+  testing depth (tier-3 triangulation), the documentation surface
+  (migration guide), and the version-string commitment (semver
+  stability for the `[deps]` API).
+- ADR-043 documents the explicit choice to ship NUTS-only
+  triangulation in v1.0 rather than NUTS + Gen.jl. The
+  triangulation envelope is two-way at v1.0; Gen.jl is tracked as
+  a v1.x stretch lane.
+- ADR-044 documents the empirical pivot from `tol_sd = 0.15`
+  ("tighter because chains are longer") to `tol_sd = 0.60`. NUTS
+  finds 30–45% wider posterior on the BYM2 mixing weight `logit φ`
+  than INLA does — at 1000-sample chains this is structural
+  (grid-vs-HMC), not MC-error. Means agree within 0.06–0.23 SDs on
+  both flagship Poisson-BYM2 datasets.
+- Pushed to the personal `haavardhvarnes/JuliaRegistry` per the
+  registry policy — General-registry submission stays off the
+  roadmap.
+
+## [v0.3.0] — 2026-05-06
+
+Phase O closes the raster bridge — `INLASPDERasters.jl` lifts from
+"vertex-vector primitives" to a `(model, res, …)` user-facing
+surface that posterior-projects the SPDE component slice onto a
+`Rasters.Raster` template. The Gaussian-summary path
+(`predict_raster(model, res, template; component, quantity =
+:mean|:sd|:lower|:upper)`) wraps the existing primitive at zero
+sampling cost; the sample-based path
+(`predict_raster(rng, model, res, template; quantity, n_samples)`)
+draws joint posterior samples via `posterior_sample`, slices the
+SPDE block, and reduces column-wise per `quantity`. The `Exceedance(c)`
+quantity wrapper makes `P(u(s) > c | y)` a first-class tail
+functional (probabilities don't compose linearly under barycentric
+averaging — the sample-based path is the honest route).
+
+Tagged retroactively on `373d8a7` (Phase O PR-5). The umbrella
+`INLA.jl` Project.toml version-string was not bumped at the time
+and remains `"0.2.0"` at the tag commit; the tag-level Phase O close
+is documented here rather than in a release-commit version bump
+(matching the v0.2.2 retroactive pattern).
+
+Three new ADRs land in [`plans/decisions.md`](plans/decisions.md):
+ADR-040 (`predict_raster(model, res, …)` — Gaussian summary +
+sample-based path with `Exceedance` wrapper), ADR-041 (CRS policy
+— `predict_raster` rejects mismatched CRS at the API boundary;
+`mesh_crs` keyword is opt-in), ADR-042 (INLASPDERasters takes a
+load-bearing dep on LatentGaussianModels via `(model, res, …)`
+overloads — the previously latent dep at scaffolding time becomes
+active).
+
+### Added
+
+**Phase O — raster bridge (`predict_raster(model, res, …)`)**
+
+- **`predict_raster(model, res, template; component, quantity =
+  :mean, mesh_crs, outside, missingval)`** (PR-1, ADR-040 first half) —
+  Gaussian-summary path. Reads `random_effects(model, res)` for the
+  SPDE component slice; `quantity ∈ (:mean, :sd, :lower, :upper)`.
+  `component` is the SPDE component to slice (`Int` index or
+  `String` name matching `random_effects` keys). Wraps the existing
+  vertex-vector primitive; ~30 LOC and zero new sampling cost.
+  [`packages/INLASPDERasters.jl/src/predict.jl`](packages/INLASPDERasters.jl/src/predict.jl).
+- **`extract_at_mesh(raster, mesh; mesh_crs = nothing, …)` CRS keyword**
+  (PR-1, ADR-041) — opt-in CRS validation at the API boundary;
+  asserts `mesh_crs == Rasters.crs(raster)` and throws
+  `ArgumentError` with concrete pointer on mismatch. `nothing`
+  preserves "trust the caller" back-compat. The escape hatch is
+  opt-in by design — silent-mismatch is still possible if the user
+  doesn't supply `mesh_crs`. Documented in the function docstring
+  and the Meuse vignette.
+- **Sample-based `predict_raster(rng, model, res, template;
+  component, quantity, n_samples, …)`** (PR-2, ADR-040 second half) —
+  draws joint posterior samples via `posterior_sample`, slices the
+  SPDE block via `model.latent_ranges[i]`, applies the per-cell
+  `MeshProjector` to the draw matrix in a single sparse-dense GEMM
+  (`P.A * x_samples[spde_range, :]`), then reduces column-wise per
+  the requested `quantity`.
+- **`Exceedance{T}` quantity wrapper** (PR-2, ADR-040) — tiny
+  exported struct so `quantity = Exceedance(c)` makes the dispatch
+  type-stable and the API self-documents at the call site:
+  `predict_raster(rng, model, res, template; quantity =
+  Exceedance(2.5), n_samples = 1000)` returns `P(u(s) > 2.5 | y)`
+  per cell.
+  [`packages/INLASPDERasters.jl/src/exceedance.jl`](packages/INLASPDERasters.jl/src/exceedance.jl).
+- **Meuse vignette renders posterior + exceedance rasters** (PR-3) —
+  [`docs/src/vignettes/meuse-spde.md`](docs/src/vignettes/meuse-spde.md)
+  gains end-to-end fit → posterior-mean raster → exceedance raster
+  example using both the Gaussian and sample-based paths.
+- **Meuse R-INLA `predict.inla` 1e-10 oracle** (PR-4) —
+  [`packages/INLASPDERasters.jl/test/oracle/`](packages/INLASPDERasters.jl/test/oracle/)
+  gains a `meuse_predict_inla` JLD2 fixture; INLA.jl posterior-mean
+  rasters agree with R-INLA's `predict.inla` output to 1e-10 on
+  vertex evaluations. Closes the raster path's tier-2 quality gate.
+- **`predict_raster` reach for `SPDE2NonStationary` + `KroneckerComponent`**
+  (PR-5) — both Phase M components now route through the same
+  Gaussian + sample-based overloads with no per-component code
+  paths. Verified on Lindgren-Rue-Lindström §3.2 (non-stationary)
+  and Cameletti PM₁₀ (space-time) fixtures.
+
+### Changed
+
+- `INLASPDERasters.jl` 0.2.0 → 0.4.0 (PR-1 0.2.0 → 0.3.0 for the
+  Gaussian-summary overload, PR-2 0.3.0 → 0.4.0 for the sample-based
+  + `Exceedance` API).
+- `INLASPDERasters.jl` adds `Random` and `Statistics` stdlib deps
+  (sample-based path), `Distributions` test extra, `JLD2` test extra
+  (oracle fixture), and widens `INLASPDE` compat to `"0.2, 0.3"`.
+- INLASPDERasters' LGM dep promoted from "declared but unused" to
+  "load-bearing for the public API" (ADR-042). No code change to
+  `[deps]`; an explicit acknowledgement that LGM compat bumps are
+  caught at `Pkg.resolve()` time rather than runtime `MethodError`s.
+
+### Notes
+
+- Tag `v0.3.0` is retroactive on commit `373d8a7` (Phase O PR-5).
+  The umbrella `INLA.jl` Project.toml version-string was not bumped
+  at the time and remains `"0.2.0"` at the tag commit; PR-5 of
+  Phase P (the v1.0.0 release commit) bumps the umbrella in lockstep
+  with every other package.
+- Reprojection of mismatched-CRS inputs is **out of scope** for v0.3
+  (ADR-041): reprojecting the *raster* is straightforward via
+  `Proj_jll`, but reprojecting the *mesh* would mutate `mesh.points`
+  and invalidate the SPDE FEM matrices already assembled at model
+  construction. Deferred to v0.4 with a `reproject = true` opt-in
+  and an explicit pre-condition.
+- The `Exceedance` wrapper is the only correct path for tail
+  functionals — Gaussian-summary `:upper` / `:lower` give
+  vertex-Gaussian intervals projected through linear barycentric
+  averaging, which is *not* the same as the per-cell exceedance
+  probability `P(u(s) > c | y)`. The Meuse vignette walks both
+  shapes side-by-side.
+
 ## [v0.2.2] — 2026-05-06
 
 Phase N closes the LGMFormula maturity arc. PR-1..PR-6 (closed

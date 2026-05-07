@@ -4,7 +4,7 @@ All notable changes to this repository are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [v1.0.0] — 2026-MM-DD
+## [v1.0.0] — 2026-05-07
 
 Phase P closes the v1.0 release arc. F–O delivered the R-INLA-parity
 numerical surface (likelihoods, components, priors, sampling,
@@ -98,11 +98,11 @@ index is a forward navigation aid, not a reorder.
 - Every package's `version` bumps to `1.0.0`:
   - `GMRFs.jl` 0.1.2 → 1.0.0
   - `LatentGaussianModels.jl` 0.2.0 → 1.0.0
-  - `INLASPDE.jl` 0.3.1 → 1.0.0
+  - `INLASPDE.jl` 0.3.0 → 1.0.0
   - `INLASPDERasters.jl` 0.4.0 → 1.0.0
   - `LGMFormula.jl` 0.4.0 → 1.0.0
   - `LGMTuring.jl` 0.1.0-DEV → 1.0.0
-  - Umbrella `INLA.jl` 0.3.0 → 1.0.0
+  - Umbrella `INLA.jl` 0.2.0 → 1.0.0
 - All `[deps]` / `[weakdeps]` compat bounds across the ecosystem
   pinned to `"1"` where they previously targeted `"0.x"` siblings.
 

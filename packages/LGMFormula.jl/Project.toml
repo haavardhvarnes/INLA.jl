@@ -1,6 +1,6 @@
 name = "LGMFormula"
 uuid = "bd1353c5-d16b-48e9-b430-0ac24b813647"
-version = "0.4.0"
+version = "1.0.0"
 authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
 
 [deps]
@@ -19,8 +19,8 @@ LGMFormulaINLASPDEExt = "INLASPDE"
 INLASPDE = {path = "../INLASPDE.jl"}
 
 [compat]
-INLASPDE = "0.3"
-LatentGaussianModels = "0.2"
+INLASPDE = "1"
+LatentGaussianModels = "1"
 SparseArrays = "1"
 StatsModels = "0.7"
 Tables = "1"

@@ -1,5 +1,10 @@
 # Julia INLA Ecosystem
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://haavardhvarnes.github.io/INLA.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://haavardhvarnes.github.io/INLA.jl/dev/)
+[![Test](https://github.com/haavardhvarnes/INLA.jl/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/haavardhvarnes/INLA.jl/actions/workflows/test.yml)
+[![Documentation](https://github.com/haavardhvarnes/INLA.jl/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/haavardhvarnes/INLA.jl/actions/workflows/docs.yml)
+
 A Julia-native reimplementation of the latent Gaussian model / INLA stack
 originally provided by [R-INLA](https://www.r-inla.org/). The goal is not
 line-by-line port but a composable, dispatch-based, SciML-aligned alternative

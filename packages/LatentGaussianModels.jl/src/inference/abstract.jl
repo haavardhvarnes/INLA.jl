@@ -38,9 +38,11 @@ Concrete strategies (see ADR-026):
   `strategy = "simplified.laplace"`.
 - [`FullLaplace`](@ref) — per-`x_i` refitted Laplace via constraint
   injection. The reference quality strategy when the latent posterior
-  is sharply non-Gaussian. R-INLA's `strategy = "laplace"`. PR-3 wires
-  it into [`posterior_marginal_x`](@ref) only; the integration-stage
-  hook delegates to `Gaussian` until PR-4 ships the rank-1 update.
+  is sharply non-Gaussian. R-INLA's `strategy = "laplace"`. Drives
+  both [`posterior_marginal_x`](@ref) and — since the ADR-026 "PR-4"
+  follow-up — the integration-stage `x_mean` / `x_var` summaries,
+  which are replaced by trapezoid moments of the refitted-Laplace
+  mixture after the Gaussian accumulation pass.
 
 The mean-shift facet of `SimplifiedLaplace` (integration-stage) and
 its density-skew facet (per-coordinate marginals) are independent —
@@ -77,7 +79,7 @@ See [`AbstractMarginalStrategy`](@ref) and ADR-016.
 struct SimplifiedLaplace <: AbstractMarginalStrategy end
 
 """
-    FullLaplace()
+    FullLaplace(; n_grid = 51, span = 5.0)
 
 Per-`x_i` refitted Laplace marginal strategy via constraint injection.
 R-INLA's `strategy = "laplace"`. Definition + helpers in
@@ -86,9 +88,34 @@ alongside [`Gaussian`](@ref) and [`SimplifiedLaplace`](@ref) so that
 method tables in `inference/marginals.jl` and `inference/inla.jl` can
 dispatch on `::FullLaplace` at load time.
 
+`n_grid` and `span` control the per-coordinate refit grid used for the
+*integration-stage* summary replacement (`INLA(latent_strategy =
+FullLaplace())`): each coordinate's `x_mean[i]` / `x_var[i]` becomes
+the trapezoid moment of the refitted-Laplace mixture evaluated on
+`n_grid` points spanning `±span` pilot standard deviations. The
+per-coordinate density accessor [`posterior_marginal_x`](@ref) keeps
+its own `grid_size` / `span` keywords (defaults 75 / 5.0) — the struct
+fields do not affect it (ADR-026).
+
+Cost of the integration-stage replacement: up to
+`n_x × n_grid × n_design_points` warm-started Newton refits per fit
+(tail truncation prunes most grid points). Opt-in, for sharply
+non-Gaussian latent posteriors.
+
 See [`AbstractMarginalStrategy`](@ref) and ADR-026.
 """
-struct FullLaplace <: AbstractMarginalStrategy end
+Base.@kwdef struct FullLaplace <: AbstractMarginalStrategy
+    n_grid::Int = 51
+    span::Float64 = 5.0
+
+    function FullLaplace(n_grid::Int, span::Float64)
+        n_grid ≥ 3 ||
+            throw(ArgumentError("FullLaplace: n_grid must be ≥ 3, got $n_grid"))
+        span > 0 ||
+            throw(ArgumentError("FullLaplace: span must be > 0, got $span"))
+        return new(n_grid, span)
+    end
+end
 
 """
     _resolve_marginal_strategy(s) -> AbstractMarginalStrategy

@@ -103,41 +103,64 @@ end
     @test all(parent(r_hi)[interior_hi] .== 0.0)
 end
 
-@testset "PR-2 Exceedance — at c = cell-mean → P ≈ 0.5 (Gaussian symmetry)" begin
-    # The joint posterior of (η_cell, ...) is Gaussian, so for any
-    # cell the marginal posterior of η_cell is symmetric Gaussian
-    # around its mean. P(η_cell > μ_cell) = 0.5 exactly. Sampling
-    # estimates this to MC tolerance √(0.25 / n) ≈ 0.007 at n=5000.
+@testset "PR-2 Exceedance — at c = cell-median → P = 0.5 (posterior near-symmetric)" begin
+    # Two facts are checked separately here — a split that removes a
+    # historical intermittent flake.
+    #
+    #  (1) Exceedance-reduction correctness. The `= 0.5` statement is
+    #      anchored at each cell's *sample median*, not its mean: for
+    #      ANY distribution P(η > median) = 0.5 by construction, and for
+    #      an even sample size the interpolated median sits strictly
+    #      between order stats n/2 and n/2+1, so exactly half the draws
+    #      exceed it. Because the median and the exceedance read the
+    #      *same* seeded draws, this holds to the ±1/n discreteness of
+    #      the empirical CDF — deterministic, and immune to the platform
+    #      BLAS/CHOLMOD nondeterminism in the upstream fit.
+    #
+    #  (2) Near-symmetry. The grid-integrated posterior of η_cell is a
+    #      *mixture* of the per-configuration Gaussians, so it is only
+    #      approximately symmetric: the per-cell |mean − median| skew
+    #      runs to ≈0.16·sd here. Anchoring the `= 0.5` assertion at the
+    #      mean (as an earlier version did) folded that skew into the
+    #      exceedance, leaving a ~0.04 systematic offset that a fixed
+    #      0.05 band could not reliably contain across platforms. We
+    #      instead bound the skew directly, with headroom.
     model, res, mesh = _build_and_fit_synthetic_spde()
     xs = 0.3:0.1:0.7
     ys = 0.3:0.1:0.7
     template = Raster(zeros(length(xs), length(ys)),
         (X(collect(xs)), Y(collect(ys))))
 
-    r_mean = predict_raster(model, res, template;
-        component=2, quantity=:mean)
+    # Same seed + n_samples ⇒ the median and the exceedance rasters are
+    # reductions of the identical draw matrix.
+    n_samples = 5000
+    r_mean = predict_raster(Xoshiro(44), model, res, template;
+        component=2, quantity=:mean, n_samples=n_samples)
+    r_med = predict_raster(Xoshiro(44), model, res, template;
+        component=2, quantity=0.5, n_samples=n_samples)
+    r_sd = predict_raster(model, res, template; component=2, quantity=:sd)
+
     interior = .!isnan.(parent(r_mean))
-    interior_means = parent(r_mean)[interior]
     @test any(interior)
 
-    # For each interior cell, compute the empirical exceedance at
-    # c = that cell's mean. Average over cells should be ≈ 0.5.
-    rng = Xoshiro(44)
-    n_samples = 5000
-    p_at_means = Float64[]
-    for c in interior_means
-        rng_local = Xoshiro(44)
-        r_ex = predict_raster(rng_local, model, res, template;
+    # (1) Exceedance at the per-cell median is 0.5 by construction.
+    p_at_med = Float64[]
+    for k in findall(interior)
+        c = parent(r_med)[k]
+        r_ex = predict_raster(Xoshiro(44), model, res, template;
             component=2, quantity=Exceedance(c), n_samples=n_samples)
-        # Pick the cell whose mean is `c` — bit-wise equality on
-        # Float64 keys works because we just read the same array.
-        idx = findfirst(parent(r_mean) .== c)
-        idx === nothing && continue
-        push!(p_at_means, parent(r_ex)[idx])
+        push!(p_at_med, parent(r_ex)[k])
     end
-    @test length(p_at_means) >= 1
-    # Five-sigma band on each cell: 5 * 0.5/√n_samples ≈ 0.035.
-    @test all(abs.(p_at_means .- 0.5) .< 0.05)
+    @test length(p_at_med) >= 1
+    @test all(abs.(p_at_med .- 0.5) .<= 1 / n_samples)
+
+    # (2) Near-symmetry: per-cell mean and median agree to a modest
+    # fraction of the local posterior sd. Observed skew ≈0.16·sd; the
+    # 0.3·sd bound leaves ~2× headroom for fit nondeterminism.
+    means = parent(r_mean)[interior]
+    meds = parent(r_med)[interior]
+    sds = parent(r_sd)[interior]
+    @test all(abs.(means .- meds) .< 0.3 .* sds)
 end
 
 @testset "PR-2 RNG reproducibility" begin

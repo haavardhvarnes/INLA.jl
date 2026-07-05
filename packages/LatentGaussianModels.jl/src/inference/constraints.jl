@@ -115,9 +115,10 @@ For `constraint_data === nothing`, returns `diag(H_reg^{-1})`
 unchanged. `H_reg` must be PD; callers supply the regularised
 posterior precision produced by `laplace_mode`.
 """
-function _constrained_marginal_variances(H_reg::AbstractSparseMatrix,
-        constraint_data)
-    base = GMRFs.marginal_variances(H_reg)
+# Subtract the kriging correction diag(U W^{-1} U^T) from the unconstrained
+# marginal variances `base`. Shared by both entry points below so the two
+# stay numerically identical.
+function _subtract_kriging_correction(base, constraint_data)
     constraint_data === nothing && return base
     U = constraint_data.U
     W_fact = constraint_data.W_fact
@@ -125,4 +126,21 @@ function _constrained_marginal_variances(H_reg::AbstractSparseMatrix,
     sol = W_fact \ U'                               # k × n_x
     corr = [dot(@view(U[i, :]), @view(sol[:, i])) for i in axes(U, 1)]
     return base .- corr
+end
+
+function _constrained_marginal_variances(H_reg::AbstractSparseMatrix,
+        constraint_data)
+    return _subtract_kriging_correction(GMRFs.marginal_variances(H_reg),
+        constraint_data)
+end
+
+# Hot-path overload: reuse the Laplace step's cached Cholesky factor for the
+# selected inversion instead of re-factorising `H_reg`. `cache` must factor
+# the same regularised precision the `constraint_data` was built from — this
+# holds for `LaplaceResult`, whose `factor` and `precision`/`constraint` are
+# produced from the same final Newton `H` (see `laplace_mode`).
+function _constrained_marginal_variances(cache::GMRFs.FactorCache,
+        constraint_data)
+    return _subtract_kriging_correction(GMRFs.marginal_variances(cache),
+        constraint_data)
 end

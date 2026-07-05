@@ -80,6 +80,18 @@ Log-determinant of the factored matrix.
 """
 LinearAlgebra.logdet(cache::FactorCache) = logdet(cache.F)
 
+"""
+    marginal_variances(cache::FactorCache) -> Vector{Float64}
+
+Return `diag(Q⁻¹)` reusing the Cholesky factor already held in `cache`,
+skipping re-factorisation. Use this on the hot path when a `FactorCache`
+for the target precision is in hand (e.g. `LaplaceResult.factor`); it is
+numerically identical to `marginal_variances(Q; method = :selinv)` for the
+`Q` the cache was built from. (`_selinv_diag` is defined in marginals.jl,
+which is included before this file.)
+"""
+marginal_variances(cache::FactorCache) = _selinv_diag(factor(cache))
+
 # --- helpers ---------------------------------------------------------
 
 # cholesky on sparse matrices requires SparseMatrixCSC; accept any

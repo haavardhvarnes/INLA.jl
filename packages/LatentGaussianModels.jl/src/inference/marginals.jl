@@ -83,7 +83,7 @@ function posterior_marginal_x(res::INLAResult, i::Integer;
 
     # Per-θ conditional mean and variance (constraint-corrected).
     m_k = [lp.mode[i] for lp in res.laplaces]
-    v_k = [_constrained_marginal_variances(lp.precision, lp.constraint)[i]
+    v_k = [_constrained_marginal_variances(lp.factor, lp.constraint)[i]
            for lp in res.laplaces]
 
     # Precompute per-θ skewness if requested. `_density_skewness` returns

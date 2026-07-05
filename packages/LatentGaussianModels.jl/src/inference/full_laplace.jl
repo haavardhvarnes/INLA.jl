@@ -146,7 +146,12 @@ function _try_fixed_xi_fit!(log_pdf::Vector{Float64}, j::Integer,
     try
         lp_xi = laplace_mode_fixed_xi(model, y, θ, i, a;
             strategy=laplace, x0=x_warm)
-    catch
+    catch err
+        # A fixed-xᵢ refit can legitimately fail in a bad-θ / bad-a region
+        # (ill-conditioned constrained Cholesky); the caller drops the grid
+        # point and keeps the previous warm-start. Genuine bugs must not be
+        # dropped silently — rethrow anything outside the bad-θ class.
+        _is_bad_theta_failure(err) || rethrow(err)
         return nothing
     end
     isfinite(lp_xi.log_marginal) || return nothing

@@ -23,16 +23,22 @@ jobs:
           fetch-depth: 0
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1.10'
+          # Packages require Julia 1.12+ (ADR-020); '1' resolves to current
+          # stable (1.12.x).
+          version: '1'
       - uses: julia-actions/cache@v2
-      - name: Check for benchmark project
+      - name: Check for benchmark harness
         id: check
+        # The harness (benchmarks/run.jl) compares against R-INLA via RCall,
+        # so it only runs where R + the INLA R package are installed. Stock
+        # runners don't have those, so we skip cleanly rather than fail. A
+        # maintainer can provision R-INLA and re-run via workflow_dispatch.
         run: |
-          if [ -f benchmarks/Project.toml ] && [ -f benchmarks/benchmarks.jl ]; then
+          if [ -f benchmarks/Project.toml ] && [ -f benchmarks/run.jl ] && command -v Rscript >/dev/null 2>&1; then
             echo "has_bench=true" >> $GITHUB_OUTPUT
           else
             echo "has_bench=false" >> $GITHUB_OUTPUT
-            echo "No benchmarks/benchmarks.jl yet — skipping."
+            echo "Skipping: benchmarks/run.jl needs a local R + R-INLA install (RCall)."
           fi
       - name: Run benchmarks
         if: steps.check.outputs.has_bench == 'true'
@@ -42,7 +48,7 @@ jobs:
           local_pkgs = filter(isdir, readdir("packages", join=true))
           Pkg.develop([Pkg.PackageSpec(path=p) for p in local_pkgs])
           Pkg.instantiate()
-          include("benchmarks/benchmarks.jl")
+          include("benchmarks/run.jl")
       - name: Upload result artifact
         if: steps.check.outputs.has_bench == 'true'
         uses: actions/upload-artifact@v4

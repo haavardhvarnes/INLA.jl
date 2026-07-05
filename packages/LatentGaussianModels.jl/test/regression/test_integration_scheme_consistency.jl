@@ -21,7 +21,7 @@ using Random
     u = randn(rng, n) ./ sqrt(τ_u)
     y = α_true .+ u .+ σ .* randn(rng, n)
 
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(GaussianLikelihood(),
         (Intercept(), IID(n; hyperprior=PCPrecision(1.0, 0.01))), A)
 

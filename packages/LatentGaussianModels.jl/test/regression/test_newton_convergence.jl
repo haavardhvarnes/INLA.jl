@@ -21,7 +21,7 @@ using Random
     # 1. Gaussian + Intercept + IID (2 hyperparameters).
     n = 150
     y_g = 1.0 .+ 0.5 .* randn(rng, n)
-    A_g = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A_g = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model_g = LatentGaussianModel(GaussianLikelihood(),
         (Intercept(), IID(n; hyperprior=PCPrecision(1.0, 0.01))), A_g)
 
@@ -50,7 +50,7 @@ end
     n = 120
     u = randn(rng, n) ./ 2
     y = [rand(rng, Poisson(exp(0.3 + u[i]))) for i in 1:n]
-    A = sparse([ones(n) Matrix{Float64}(I, n, n)])
+    A = sparse([ones(n) Matrix{Float64}(I, n,n)])
     model = LatentGaussianModel(PoissonLikelihood(),
         (Intercept(), IID(n; hyperprior=PCPrecision(1.0, 0.01))), A)
 

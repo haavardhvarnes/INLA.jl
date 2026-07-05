@@ -77,10 +77,17 @@ roadmap items from real defects.
    harness (`run.jl`). Not duplication. Only the stale README description of
    `benchmarks/` needed fixing (done in item 3).
 
-### Tier 2 — test hardening
-8. Assert `converged == true` across oracle fits + one Newton-straining model.
-9. Cross-check Grid/CCD/GaussHermite agreement on a 2–3 hyperparameter model.
-10. Validate `_constrained_marginal_variances` vs dense; disconnected-graph test.
+### Tier 2 — test hardening  ✅ done (branch `test/review-2026-07-tier2`)
+8. `test_newton_convergence.jl` — asserts every design-point Laplace in an
+   `inla` fit converges within budget (Gaussian + Poisson), plus a robustness
+   sweep fitting at extreme fixed θ (log-precision −6…+9).
+9. `test_integration_scheme_consistency.jl` — Grid/CCD/GaussHermite agree on
+   θ_mean, x_mean, and log-marginal for a 2-hyperparameter Gaussian+IID model
+   (non-vacuous: 25/9/25 design points respectively).
+10. `test_constrained_variances_dense.jl` — validates
+   `_constrained_marginal_variances` against a full dense kriging oracle on a
+   non-diagonal Besag precision, for a connected path graph (1 constraint) and
+   a disconnected 2-component graph (one sum-to-zero per component).
 
 ### Tier 3 — performance (roadmap Phase 6)
 11. Reuse `LaplaceResult.factor` for selected inversion.
@@ -102,4 +109,6 @@ roadmap items from real defects.
      in-repo weakdeps/extras (supersedes fragile relative `[sources]`).
 - [x] Tier 1 (5–6) — done. All 3 bare catches narrowed; migration guide fixed.
 - [~] Tier 1 (7) — withdrawn (see above).
-- Tiers 2–4: backlog.
+- [x] Tier 2 (8–10) — done on branch `test/review-2026-07-tier2`. Three new
+  regression files, wired into `runtests.jl`; all pass standalone (35 tests).
+- Tiers 3–4: backlog.

@@ -90,13 +90,19 @@ roadmap items from real defects.
    a disconnected 2-component graph (one sum-to-zero per component).
 
 ### Tier 3 — performance (roadmap Phase 6)
-11. Reuse `LaplaceResult.factor` for selected inversion.
-12. Make `_symmetrize!` genuinely in-place.
+11. ✅ Reuse `LaplaceResult.factor` for selected inversion (PR #22). 6.85×
+    faster / ~34 MiB/call less on a 625-node constrained Besag.
+12. ✅ Make `_symmetrize!` genuinely in-place. Zero-alloc two-pass average of
+    the transpose pair, guarded by a structural-symmetry check with the
+    `(H+H')/2` fallback; bit-identical (2 → 0 allocations per Newton step).
 13. Fixed-sparsity-pattern numeric updates for `joint_precision`.
 14. Hot path via `apply!`/`apply_adjoint!`; longer term a `LaplaceWorkspace`.
+15. (new, from #22 benchmarking) The intrinsic null-space bump `V Vᵀ`
+    densifies the regularised precision — biggest structural win, needs a
+    low-rank/Woodbury design + ADR.
 
 ### Tier 4 — feature completion (roadmap)
-15. FullLaplace integration means; SimplifiedLaplace variance; integrated
+16. FullLaplace integration means; SimplifiedLaplace variance; integrated
     θ marginals.
 
 ## Execution status

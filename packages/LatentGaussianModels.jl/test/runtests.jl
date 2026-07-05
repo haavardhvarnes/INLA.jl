@@ -90,6 +90,9 @@ using GMRFs
     @testset "Laplace — Hard constraint" begin
         include("regression/test_laplace_constrained.jl")
     end
+    @testset "Laplace — _symmetrize! in-place" begin
+        include("regression/test_symmetrize.jl")
+    end
     @testset "Constrained marginal variances — dense oracle" begin
         include("regression/test_constrained_variances_dense.jl")
     end

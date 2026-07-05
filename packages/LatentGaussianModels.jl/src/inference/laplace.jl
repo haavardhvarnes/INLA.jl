@@ -262,9 +262,56 @@ end
 
 # Symmetrise a sparse matrix in place (Q + A'DA can accumulate asymmetry
 # at floating-point level through multiplication order).
-function _symmetrize!(H::AbstractSparseMatrix)
-    return (H + H') ./ 2
+# Index into `nonzeros(H)` of the stored entry `H[targetrow, col]`, or 0 if
+# that position is not stored. Binary search relies on CSC row indices being
+# sorted ascending within each column, which is the canonical form produced
+# by all standard sparse ops (`+`, `*`) — so it holds for `Q_reg + JᵀDJ`.
+@inline function _transpose_nzindex(rows, colrange, targetrow::Integer)
+    lo, hi = first(colrange), last(colrange)
+    @inbounds while lo <= hi
+        mid = (lo + hi) >>> 1
+        r = rows[mid]
+        r == targetrow && return mid
+        r < targetrow ? (lo = mid + 1) : (hi = mid - 1)
+    end
+    return 0
 end
+
+# True iff every off-diagonal stored entry `(i, j)` has its transpose `(j, i)`
+# stored too — the precondition for averaging the two triangles in place.
+function _is_structurally_symmetric(H::SparseMatrixCSC)
+    rows = rowvals(H)
+    @inbounds for j in axes(H, 2), k in nzrange(H, j)
+        i = rows[k]
+        i == j && continue
+        _transpose_nzindex(rows, nzrange(H, i), j) == 0 && return false
+    end
+    return true
+end
+
+# Symmetrise `H = Qᵀ + JᵀDJ` in place — clean up the floating-point-level
+# asymmetry between `H[i,j]` and `H[j,i]` that assembly order introduces —
+# without allocating a new matrix. Averages each off-diagonal pair; the
+# diagonal is untouched. Bit-identical to `(H + H') ./ 2` (2 → 0 allocations)
+# whenever `H` is structurally symmetric, which holds for the posterior
+# precision here. Falls back to the allocating form otherwise.
+function _symmetrize!(H::SparseMatrixCSC)
+    _is_structurally_symmetric(H) || return (H + H') ./ 2
+    rows = rowvals(H)
+    vals = nonzeros(H)
+    @inbounds for j in axes(H, 2), k in nzrange(H, j)
+        i = rows[k]
+        i > j || continue                          # each pair once, from below the diagonal
+        kt = _transpose_nzindex(rows, nzrange(H, i), j)
+        avg = (vals[k] + vals[kt]) * 0.5           # `* 0.5` == `/ 2` exactly for Float64
+        vals[k] = avg
+        vals[kt] = avg
+    end
+    return H
+end
+
+# Generic fallback for non-CSC sparse types.
+_symmetrize!(H::AbstractSparseMatrix) = (H + H') ./ 2
 
 # log|Q|_+ = logdet(Q_reg) when has_constr and Q_reg = Q + V V^T is PD.
 # For proper (unconstrained) Q, Q_reg ≡ Q and this is the ordinary log-det.

@@ -10,17 +10,32 @@ mean scaling is applied, matching R-INLA ≥ 17.06. Carries one
 sum-to-zero constraint per connected component of `graph`
 (Freni-Sterrantino et al. 2018).
 """
+# Per-node Sørbye-Rue (2014) scale constants on `graph` — the scaling of the
+# connected component containing each node (Freni-Sterrantino et al. 2018),
+# or all-ones when unscaled. Depends only on the graph and is θ-independent,
+# so intrinsic scaled components (Besag, BYM) compute it once at construction
+# and reuse it: `per_component_scale_factors` builds a dense `inv(Qperp)` per
+# component, which otherwise dominates `precision_matrix` allocation.
+function _sorbye_rue_scale_constants(g::GMRFs.AbstractGMRFGraph, scale_model::Bool)
+    scale_model || return ones(Float64, GMRFs.num_nodes(g))
+    c_k = GMRFs.per_component_scale_factors(g)
+    labels = GMRFs.connected_component_labels(g)
+    return Float64[c_k[labels[i]] for i in 1:GMRFs.num_nodes(g)]
+end
+
 struct Besag{P <: AbstractHyperPrior, G <: GMRFs.AbstractGMRFGraph} <:
        AbstractLatentComponent
     graph::G
     hyperprior::P
     scale_model::Bool
+    scale_constants::Vector{Float64}   # cached per-node Sørbye-Rue constants
 end
 
 function Besag(graph::GMRFs.AbstractGMRFGraph;
         hyperprior::AbstractHyperPrior=PCPrecision(),
         scale_model::Bool=true)
-    return Besag(graph, hyperprior, scale_model)
+    sc = _sorbye_rue_scale_constants(graph, scale_model)
+    return Besag(graph, hyperprior, scale_model, sc)
 end
 
 Besag(W::AbstractMatrix; kwargs...) = Besag(GMRFs.GMRFGraph(W); kwargs...)
@@ -30,7 +45,8 @@ nhyperparameters(::Besag) = 1
 initial_hyperparameters(::Besag) = [0.0]
 
 function gmrf(c::Besag, θ)
-    return GMRFs.BesagGMRF(c.graph; τ=exp(θ[1]), scale_model=c.scale_model)
+    return GMRFs.BesagGMRF(c.graph; τ=exp(θ[1]), scale_model=c.scale_model,
+        c=c.scale_constants)
 end
 
 precision_matrix(c::Besag, θ) = GMRFs.precision_matrix(gmrf(c, θ))

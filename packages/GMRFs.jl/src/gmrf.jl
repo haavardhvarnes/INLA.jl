@@ -363,9 +363,19 @@ struct BesagGMRF{T <: Real, G <: AbstractGMRFGraph} <: AbstractGMRF
     scale_model::Bool
 end
 
-function BesagGMRF(g::AbstractGMRFGraph; τ::Real=1.0, scale_model::Bool=true)
+function BesagGMRF(g::AbstractGMRFGraph; τ::Real=1.0, scale_model::Bool=true,
+        c::Union{Nothing, AbstractVector{<:Real}}=nothing)
     n = num_nodes(g)
-    c_per_node = if scale_model
+    # `c` (per-node Sørbye-Rue constants) may be supplied precomputed. The
+    # scaling depends only on the graph, so callers that build many
+    # `BesagGMRF`s on the same graph across θ (the INLA loop) pass it in to
+    # skip the dense `per_component_scale_factors` recompute — a fresh
+    # `inv(Qperp)` per connected component. Falls back to computing it.
+    c_per_node = if c !== nothing
+        length(c) == n ||
+            throw(DimensionMismatch("c has length $(length(c)); graph has $n nodes"))
+        c
+    elseif scale_model
         c_k = per_component_scale_factors(g)
         labels = connected_component_labels(g)
         Float64[c_k[labels[i]] for i in 1:n]

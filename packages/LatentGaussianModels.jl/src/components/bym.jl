@@ -34,13 +34,15 @@ struct BYM{Pv <: AbstractHyperPrior, Pb <: AbstractHyperPrior,
     hyperprior_iid::Pv
     hyperprior_besag::Pb
     scale_model::Bool
+    scale_constants::Vector{Float64}   # cached per-node Sørbye-Rue constants
 end
 
 function BYM(graph::GMRFs.AbstractGMRFGraph;
         hyperprior_iid::AbstractHyperPrior=PCPrecision(),
         hyperprior_besag::AbstractHyperPrior=PCPrecision(),
         scale_model::Bool=true)
-    return BYM(graph, hyperprior_iid, hyperprior_besag, scale_model)
+    sc = _sorbye_rue_scale_constants(graph, scale_model)
+    return BYM(graph, hyperprior_iid, hyperprior_besag, scale_model, sc)
 end
 
 BYM(W::AbstractMatrix; kwargs...) = BYM(GMRFs.GMRFGraph(W); kwargs...)
@@ -58,8 +60,7 @@ function precision_matrix(c::BYM, θ)
     n = GMRFs.num_nodes(c.graph)
     L = SparseMatrixCSC{Float64, Int}(GMRFs.laplacian_matrix(c.graph))
     if c.scale_model
-        c_per_node = _bym_per_node_scale(c.graph)
-        s = sqrt.(c_per_node)
+        s = sqrt.(c.scale_constants)          # cached per-node Sørbye-Rue constants
         D = Diagonal(s)
         R_scaled = D * L * D
     else
@@ -86,15 +87,6 @@ function precision_matrix(c::BYM, θ)
         end
     end
     return sparse(Is, Js, Vs, 2n, 2n)
-end
-
-# Per-node Sørbye-Rue constants on the underlying graph: c_per_node[i]
-# is the scaling factor of the connected component containing node `i`
-# (Freni-Sterrantino et al. 2018).
-function _bym_per_node_scale(g::GMRFs.AbstractGMRFGraph)
-    c_k = GMRFs.per_component_scale_factors(g)
-    labels = GMRFs.connected_component_labels(g)
-    return Float64[c_k[labels[i]] for i in 1:GMRFs.num_nodes(g)]
 end
 
 function log_hyperprior(c::BYM, θ)

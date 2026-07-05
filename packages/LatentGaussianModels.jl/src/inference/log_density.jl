@@ -58,7 +58,10 @@ function LogDensityProblems.logdensity(ld::INLALogDensity, θ::AbstractVector)
     local res
     try
         res = laplace_mode(ld.model, ld.y, θ; strategy=ld.laplace)
-    catch
+    catch err
+        # Bad-θ regions map to zero density (-Inf log-density); genuine
+        # bugs (dimension/shape errors) must not be silently swallowed.
+        _is_bad_theta_failure(err) || rethrow(err)
         return -Inf
     end
     isfinite(res.log_marginal) || return -Inf

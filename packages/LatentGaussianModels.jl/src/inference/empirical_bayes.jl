@@ -47,7 +47,11 @@ function fit(m::LatentGaussianModel, y, strategy::EmpiricalBayes)
         local res
         try
             res = laplace_mode(m, y, θ; strategy=strategy.laplace)
-        catch
+        catch err
+            # Bad-θ regions (ill-conditioned Cholesky, domain violations)
+            # are expected during the outer optimisation and map to a large
+            # objective; anything else is a real bug and must surface.
+            _is_bad_theta_failure(err) || rethrow(err)
             return Inf
         end
         !isfinite(res.log_marginal) && return Inf

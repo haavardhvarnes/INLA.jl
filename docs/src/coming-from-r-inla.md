@@ -211,7 +211,7 @@ SD σ (Fuglstad et al. 2019). The four arguments mean: `P(ρ < range_U)
 | `int.strategy = "auto"` | `int_strategy = :auto` | `:auto` (= `:ccd` for dim(θ) > 2, else `:grid`) |
 | `int.strategy = "ccd"` | `int_strategy = :ccd` | |
 | `int.strategy = "grid"` | `int_strategy = :grid` | |
-| `int.strategy = "eb"` | `int_strategy = :empirical` | |
+| `int.strategy = "eb"` | pass `EmpiricalBayes()` to `fit(...)` (or `empirical_bayes(model, y)`) | |
 | `control.inla = list(strategy = "gaussian")` | `latent_strategy = Gaussian()` | `Gaussian()` |
 | `control.inla = list(strategy = "laplace")` | pass `Laplace()` to `fit(...)` | |
 | `control.compute = list(dic = TRUE)` | `dic(res, model, y)` (post-fit) | always available |

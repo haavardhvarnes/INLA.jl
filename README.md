@@ -13,11 +13,12 @@ genuine extensibility.
 
 ## Status
 
-**`v0.1.1`.** The four `src/`-bearing packages
+**`v1.0.0`.** The `src/`-bearing packages
 (`GMRFs.jl`, `LatentGaussianModels.jl`, `INLASPDE.jl`,
-`INLASPDERasters.jl`) cover the canonical R-INLA datasets within the
-testing-strategy tolerances. See [`CHANGELOG.md`](CHANGELOG.md) for
-what landed and where R-INLA parity is known to be loose.
+`INLASPDERasters.jl`, `LGMFormula.jl`, `LGMTuring.jl`) cover the
+canonical R-INLA datasets within the testing-strategy tolerances. See
+[`CHANGELOG.md`](CHANGELOG.md) for what landed and where R-INLA parity
+is known to be loose.
 
 ## Packages
 
@@ -59,8 +60,8 @@ Pkg.add("INLA")              # umbrella: GMRFs + LatentGaussianModels + INLASPDE
 
 For a leaner install, replace `"INLA"` with any individual core
 package — `"GMRFs"`, `"LatentGaussianModels"`, `"INLASPDE"`, or
-`"INLASPDERasters"`. `INLASPDERasters` is registered but its API is
-scaffolding only in v0.1.1; see its
+`"INLASPDERasters"`. `INLASPDERasters` ships a working raster–SPDE
+bridge exercised end-to-end by the Meuse SPDE vignette; see its
 [README](packages/INLASPDERasters.jl/README.md).
 
 The optional sub-packages `LGMTuring.jl`, `LGMFormula.jl`, and
@@ -72,7 +73,7 @@ Pkg.develop(url = "https://github.com/haavardhvarnes/INLA.jl",
             subdir = "packages/LGMTuring.jl")
 ```
 
-## What ships in v0.1.1
+## What ships in v1.0.0
 
 - **Latent components**: `Intercept`, `FixedEffects`, `IID`, `RW1`,
   `RW2`, `AR1`, `Seasonal`, `Besag`, `BYM`, `BYM2`, `Leroux`,
@@ -120,7 +121,7 @@ runtime (~3-5 minutes), and the JSON schema.
 - `plans/` — ecosystem-level design documents (architecture, dependencies, testing, macro policy, ADR log).
 - `references/` — annotated bibliography and notes on upstream INLA source.
 - `bench/` — R-INLA parity reproducer (`oracle_compare.jl`) and its env.
-- `benchmarks/` — placeholder for cross-package perf runs vs Stan/NIMBLE (Phase 0.2).
+- `benchmarks/` — performance harness (`run.jl`) timing INLA.jl vs R-INLA on the flagship datasets; results in `benchmarks/results/`.
 - `docs/` — Documenter site source (`docs/src/`); built site lives at `docs/build/` (gitignored).
 - `scripts/` — fixture generation and utilities.
 - `packages/` — the Julia packages themselves, each with its own plan and `CLAUDE.md`.

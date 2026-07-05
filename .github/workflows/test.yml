@@ -18,15 +18,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Only packages with a populated `src/`. `LGMFormula.jl` and
-        # `GMRFsPardiso.jl` are 0.1.0-DEV scaffolding without sources;
-        # add them back when they ship.
+        # Every package with a populated `src/`. `GMRFsPardiso.jl` is the
+        # only src-less package (Pardiso backend, license-gated); add it
+        # when it ships.
         package:
           - GMRFs.jl
           - LatentGaussianModels.jl
           - INLASPDE.jl
           - LGMTuring.jl
+          - LGMFormula.jl
           - INLASPDERasters.jl
+          - INLA.jl
         julia-version:
           - '1'      # current stable (resolves to 1.12.x). Per ADR-020,
                      # 1.12 is the minimum supported Julia version.
@@ -79,7 +81,18 @@ jobs:
           end
           to_dev_paths = String[]
           to_dev_names = Set{String}()
-          queue = collect(keys(get(TOML.parsefile(joinpath(active, "Project.toml")), "deps", Dict{String,Any}())))
+          # Seed with [deps] plus in-repo [weakdeps]/[extras]: a package's
+          # test target may pull an intra-ecosystem weakdep (e.g. LGMFormula
+          # tests exercise its INLASPDE extension). Dev-linking those by
+          # absolute path also supersedes any relative `[sources]` entry,
+          # which is fragile under `Pkg.test` sandboxing. Only in-repo names
+          # (present in `local_by_name`) are ever dev-linked, so external
+          # extras stay untouched and Aqua sees no spurious `[deps]`.
+          active_proj = TOML.parsefile(joinpath(active, "Project.toml"))
+          queue = String[]
+          for section in ("deps", "weakdeps", "extras")
+              append!(queue, keys(get(active_proj, section, Dict{String,Any}())))
+          end
           while !isempty(queue)
               name = popfirst!(queue)
               (name in to_dev_names || !haskey(local_by_name, name)) && continue
@@ -135,7 +148,18 @@ jobs:
           end
           to_dev_paths = String[]
           to_dev_names = Set{String}()
-          queue = collect(keys(get(TOML.parsefile(joinpath(active, "Project.toml")), "deps", Dict{String,Any}())))
+          # Seed with [deps] plus in-repo [weakdeps]/[extras]: a package's
+          # test target may pull an intra-ecosystem weakdep (e.g. LGMFormula
+          # tests exercise its INLASPDE extension). Dev-linking those by
+          # absolute path also supersedes any relative `[sources]` entry,
+          # which is fragile under `Pkg.test` sandboxing. Only in-repo names
+          # (present in `local_by_name`) are ever dev-linked, so external
+          # extras stay untouched and Aqua sees no spurious `[deps]`.
+          active_proj = TOML.parsefile(joinpath(active, "Project.toml"))
+          queue = String[]
+          for section in ("deps", "weakdeps", "extras")
+              append!(queue, keys(get(active_proj, section, Dict{String,Any}())))
+          end
           while !isempty(queue)
               name = popfirst!(queue)
               (name in to_dev_names || !haskey(local_by_name, name)) && continue

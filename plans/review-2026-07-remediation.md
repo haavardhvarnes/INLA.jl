@@ -140,15 +140,19 @@ roadmap items from real defects.
        fields. Oracle-gated on Brunei `summary_random` at the
        per-coordinate tolerances (0.025 mean / 0.075 sd, the pure-FL vs
        VB-corrected-FL band).
-    3. **SimplifiedLaplace variance correction** — last, and gated on its
-       own ADR. Needs a new likelihood-contract method
-       (`∇⁴_η_log_density`) across all closed-form families + fallback;
-       Pennsylvania fixture stores only SLA *means* (`bym_mean_sla`), so
-       SDs require fixture regeneration; and modern R-INLA (25.10.19)
-       routes all strategies through a unified VB-corrected pipeline
-       (see `synthetic_brunei.R` header), so the ADR must first decide
-       the oracle target: classic-mode R-INLA fixtures vs widened
-       tolerances against the VB-corrected output.
+    3. ✅ **SimplifiedLaplace variance correction — closed as
+       mis-specified (ADR-047), no numerical change.** Scoping against
+       Rue-Martino-Chopin (2009) §3.2.3 showed the deferred term does
+       not exist in the reference method: the SLA defines only the
+       `γ^(1)` mean and `γ^(3)` skewness corrections (both
+       third-derivative) and pins the skew-normal variance at 1; the
+       ADR-016 `h⁴` formula is withdrawn by amendment. Modern R-INLA's
+       variance adjustments are the strategy-independent VB corrections
+       (`control.vb`), recorded in ADR-047 as a possible future feature
+       on the `_apply_integration_moments` seam — a new feature with
+       in-tree oracles (all fixtures are VB-corrected), not
+       remediation. No `∇⁴_η_log_density` contract, no fixture
+       regeneration.
 
 ## Execution status
 
@@ -162,4 +166,11 @@ roadmap items from real defects.
 - [~] Tier 1 (7) — withdrawn (see above).
 - [x] Tier 2 (8–10) — done on branch `test/review-2026-07-tier2`. Three new
   regression files, wired into `runtests.jl`; all pass standalone (35 tests).
-- Tiers 3–4: backlog.
+- [x] Tier 3 (11, 12, 15, 17) — done; 13/14 deprioritised after profiling
+  (see `plans/laplace-workspace-scoping.md`).
+- [x] Tier 4 (16) — **complete 2026-07-06.**
+  16.1 integrated θ marginals (ADR-046, PR #29);
+  16.2 FullLaplace integration-stage summaries (ADR-026 "PR-4", PR #30);
+  16.3 SLA variance correction closed as mis-specified (ADR-047) — the
+  successor feature (VB corrections) is scoped there if wanted.
+  **This closes the 2026-07 remediation backlog.**

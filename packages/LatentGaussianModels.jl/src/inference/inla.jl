@@ -55,8 +55,12 @@ that one expands the per-coordinate density `p(x_i | y)` around the
 unshifted Newton mode (Rue-Martino-Chopin 2009 §4.2). They can be
 toggled independently — see ADR-016.
 
-R-INLA's full `simplified.laplace` also includes a variance correction;
-that piece is deferred to v0.3 (see ADR-006 amendment).
+`simplified.laplace` does not correct the per-θ conditional variance —
+the Rue-Martino-Chopin (2009) §3.2.3 skew-normal representation pins
+the variance at 1 by construction, so none is missing here (ADR-047).
+Modern R-INLA's variance adjustments come from the separate,
+strategy-independent variational-Bayes corrections (`control.vb`,
+van Niekerk & Rue 2024), which are not implemented.
 
 ### `skewness_correction`
 

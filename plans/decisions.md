@@ -53,6 +53,7 @@ For navigation; ADR bodies appear in numerical order under the index.
 - [ADR-031](#adr-031-targeted-exception-classification-in-the-laplace-bad-θ-wrapper) — targeted exception classification
 - [ADR-045](#adr-045-proposed-de-densify-the-constrained-laplace-null-space-bump-low-rank-or-bordered-kkt) — de-densify the constrained-Laplace null-space bump (Proposed)
 - [ADR-046](#adr-046-integrated-hyperparameter-marginals--design-point-reuse-for-mθ--1-conditional-mode-profile-slices-for-mθ--2) — integrated hyperparameter marginals
+- [ADR-047](#adr-047-item-163-closed--the-simplified-laplace-variance-correction-is-mis-specified-no-such-term-exists-in-the-reference-method) — "SLA variance correction" closed as mis-specified
 
 **Observation mapping & projectors**
 - [ADR-005](#adr-005-projector-matrix-a-as-a-model-field-in-v0x-possibly-promoted-later) — projector A as model field
@@ -950,6 +951,19 @@ corrections remain v0.3 / out of scope.
 - `packages/LatentGaussianModels.jl/test/regression/test_sla_mean_shift.jl`
   — regression coverage (Gaussian collapse, dense formula
   cross-check, BYM2 sum-to-zero preservation).
+
+### Amendment 2026-07-06 — variance-correction claim withdrawn (see ADR-047)
+
+The "variance correction (R-INLA's third simplified-Laplace term,
+`H⁻¹ Aᵀ diag(h⁴) A H⁻¹` per coordinate)" this ADR deferred does not
+exist in Rue-Martino-Chopin (2009) §3.2.3: the expansion defines only
+the `γ^(1)` mean and `γ^(3)` skewness terms (both third-derivative),
+and the fitted skew-normal pins the variance at 1 by construction. The
+deferral is closed as mis-specified by ADR-047. Modern R-INLA's
+variance adjustments are the strategy-independent VB corrections
+(`control.vb`), recorded in ADR-047 as a possible future feature on
+the `_apply_integration_moments` seam. The mean-shift decision and
+implementation in this ADR are unaffected.
 
 ---
 
@@ -5446,3 +5460,96 @@ data showed:
 - [`test_scotland_bym.jl`](../packages/LatentGaussianModels.jl/test/oracle/test_scotland_bym.jl)
   — the deferred comparison, now replaced by the two-sided consistency
   check described above.
+
+---
+
+## ADR-047: Item 16.3 closed — the "simplified-Laplace variance correction" is mis-specified; no such term exists in the reference method
+
+Status: Accepted
+Date: 2026-07-06
+
+### Context
+
+Tier-4 item 16.3
+([`review-2026-07-remediation.md`](review-2026-07-remediation.md))
+scheduled the "SimplifiedLaplace variance correction" deferred by
+ADR-016, which described it as "R-INLA's third simplified-Laplace
+term, `H⁻¹ Aᵀ diag(h⁴) A H⁻¹` per coordinate". Scoping against the
+primary source — Rue, Martino & Chopin (2009) §3.2.3, eqs. 17–22 —
+shows the premise is wrong:
+
+- The simplified-Laplace expansion defines exactly **two** correction
+  terms, both built from third derivatives `d_j^(3)`:
+  `γ_i^(1)` (mean shift, eq. 21 — shipped per ADR-016) and `γ_i^(3)`
+  (skewness, eq. 21 — shipped as the Edgeworth/skew density
+  correction).
+- The density representation is a skew-normal fitted "so that the
+  third derivative at the mode is `γ^(3)`, the mean is `γ^(1)` and
+  the variance is 1" — the per-θ conditional variance is
+  **deliberately left uncorrected** in the reference method.
+- For symmetric heavy-tailed likelihoods (Student-t is the paper's
+  example) the prescribed remedy is not a variance term but the
+  spline-corrected *full* Laplace (eq. 17) — the strategy we ship as
+  `FullLaplace`, since item 16.2 also at the integration stage.
+- A fourth-derivative term of the claimed form could only arise from
+  a second-order expansion of the log-determinant denominator
+  (eq. 20), which the paper never carries out and classic R-INLA
+  never implemented as part of `simplified.laplace`.
+
+What corrects variances in *modern* R-INLA is a different,
+strategy-independent mechanism: the variational-Bayes corrections
+(low-rank VB mean correction, van Niekerk & Rue 2024, JMLR 25(62);
+variance strategy per van Niekerk, Krainski, Rustand & Rue 2023, CSDA
+181; exposed as `control.vb`). This is the "unified VB-corrected
+pipeline" already documented in the Brunei fixture header
+(`scripts/generate-fixtures/lgm/synthetic_brunei.R`) and the reason
+the pure-FL vs R-INLA SD tolerance there is 8 %.
+
+### Decision
+
+Close item 16.3 with **no numerical change** (option A of the
+2026-07-06 scoping):
+
+- Correct the `INLA` docstring claim that "R-INLA's full
+  `simplified.laplace` also includes a variance correction … deferred
+  to v0.3".
+- Amend ADR-016 to withdraw the `h⁴` formula.
+- Do **not** add a `∇⁴_η_log_density` likelihood contract; no fixture
+  regeneration; no R round-trip.
+
+Record option B — implementing the van Niekerk–Rue VB corrections as
+an opt-in post-pass on the `_apply_integration_moments` seam
+introduced by item 16.2 — as the properly-specified successor feature
+if modern-R-INLA variance parity is wanted. It has real oracles
+already in-tree (every stored fixture is VB-corrected), would allow
+*tightening* the Brunei SD band, and needs its own ADR when
+scheduled; it is a new feature, not remediation.
+
+Rejected: option C, deriving the fourth-derivative second-order
+denominator term ourselves — no reference implementation, no oracle,
+no parity value ("more classic than classic").
+
+### Consequences
+
+- Tier 4 of the 2026-07 remediation closes: 16.1 shipped (ADR-046,
+  PR #29), 16.2 shipped (ADR-026 "PR-4", PR #30), 16.3 resolved as
+  documentation (this ADR).
+- The remaining honest gap vs modern R-INLA is now precisely named:
+  per-θ conditional variances are not VB-corrected in any strategy.
+  It is visible only inside the tolerances already calibrated on the
+  oracle fixtures (e.g. Brunei's 0.075 SD band).
+- **Escape hatch / future:** option B above, on the
+  `_apply_integration_moments` seam.
+
+### References
+
+- Rue, Martino & Chopin (2009), §3.2.3, eqs. 17–22 — the definitive
+  statement that the SLA variance is pinned at 1.
+- van Niekerk & Rue (2024). Low-rank variational Bayes correction to
+  the Laplace method. *JMLR*, 25(62), 1–25.
+- van Niekerk, Krainski, Rustand & Rue (2023). A new avenue for
+  Bayesian inference with INLA. *CSDA*, 181, 107692
+  (`references/papers.md`).
+- ADR-016 (amended 2026-07-06), ADR-026,
+  [`review-2026-07-remediation.md`](review-2026-07-remediation.md)
+  item 16.

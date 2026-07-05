@@ -66,6 +66,9 @@ using GMRFs
     @testset "BYM" begin
         include("regression/test_bym.jl")
     end
+    @testset "scale_factor caching (Besag / BYM)" begin
+        include("regression/test_scale_factor_cache.jl")
+    end
     @testset "BYM2" begin
         include("regression/test_bym2.jl")
     end

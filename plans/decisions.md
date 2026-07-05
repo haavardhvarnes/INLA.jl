@@ -52,6 +52,7 @@ For navigation; ADR bodies appear in numerical order under the index.
 - [ADR-027](#adr-027-is-correction-port-from-integratednestedlaplacejl--declined-for-v0x-deferred-to-per-workflow-strategy-if-a-use-case-appears) — IS correction declined
 - [ADR-031](#adr-031-targeted-exception-classification-in-the-laplace-bad-θ-wrapper) — targeted exception classification
 - [ADR-045](#adr-045-proposed-de-densify-the-constrained-laplace-null-space-bump-low-rank-or-bordered-kkt) — de-densify the constrained-Laplace null-space bump (Proposed)
+- [ADR-046](#adr-046-integrated-hyperparameter-marginals--design-point-reuse-for-mθ--1-conditional-mode-profile-slices-for-mθ--2) — integrated hyperparameter marginals
 
 **Observation mapping & projectors**
 - [ADR-005](#adr-005-projector-matrix-a-as-a-model-field-in-v0x-possibly-promoted-later) — projector A as model field
@@ -5248,3 +5249,200 @@ R-INLA oracle fixtures.
 - ADR-012 — SelectedInversion.jl; the sparse selinv path the low-rank form reuses.
 - PR #22 — `marginal_variances(::FactorCache)` factor reuse; consumes the sparse `H_s` factor.
 - Rue & Held (2005) §2.3.2 — equality-constrained GMRF solves (kriging vs augmented system).
+
+---
+
+## ADR-046: Integrated hyperparameter marginals — design-point reuse for m(θ) = 1, conditional-mode profile slices for m(θ) ≥ 2
+
+Status: Accepted (implemented 2026-07-05; see implementation findings below)
+Date: 2026-07-05
+
+### Context
+
+`posterior_marginal_θ(res, j)`
+([`marginals.jl:149`](../packages/LatentGaussianModels.jl/src/inference/marginals.jl))
+returns a Gaussian at `(θ̂_j, √Σθ[j,j])` — the honestly-documented
+placeholder from the Tier-4 backlog
+([`review-2026-07-remediation.md`](review-2026-07-remediation.md) item 16).
+The gap is not cosmetic:
+
+- Log-precision posteriors are strongly right-skewed on the internal
+  scale; a symmetric Gaussian at the mode misstates both moments, and
+  the internal→user Jacobian (`p(τ) = p_int(log τ)/τ`) shifts user-scale
+  summaries by 50–80 % on heavy-tailed axes. The Scotland classical-BYM
+  oracle test
+  ([`test_scotland_bym.jl`](../packages/LatentGaussianModels.jl/test/oracle/test_scotland_bym.jl))
+  documents exactly this and *defers its τ_b point comparison* to the
+  day an integrated θ-marginal accessor lands (replan Phase K promise,
+  Martins et al. 2013 §3.3).
+- R-INLA's `summary.hyperpar` / `marginals.hyperpar` — the numbers every
+  R-INLA user reads first — come from an integrated marginal, never
+  from the Gaussian at the mode.
+
+Why the existing `INLAResult` cannot express the density: it stores
+`θ_points` and the *normalised IS quadrature weights* `θ_weights`
+(`w_k ∝ base_w_k · π̂(θ_k|y)/q(θ_k)`), but not the base quadrature
+weights or `log π̂(θ_k|y)` themselves. Neither Grid (`φ(z)Δz` products)
+nor CCD (center/axial/corner classes) has uniform base weights, so the
+posterior density at the design points is not recoverable from
+`θ_weights` after the fact. The integration stage *computes*
+`log_π[k] = log_marginal + log_hyperprior` at every retained point
+([`inla.jl:314`](../packages/LatentGaussianModels.jl/src/inference/inla.jl))
+and then throws it away.
+
+Validation data already exists: every one of the 28 LGM oracle fixtures
+stores R-INLA's `marginals.hyperpar` density grids
+(`scripts/generate-fixtures/_helpers.R`, `include_marginals = TRUE`), so
+tier-2 gating needs **no fixture regeneration**. R-INLA's stored
+marginals are user-scale; tests transform them to the internal scale via
+the Jacobian rather than teaching the accessor about user-scale maps.
+
+What R-INLA does (Martins, Simpson, Lindgren & Rue 2013 §3.2–3.3): build
+`p(θ_j|y)` from the mode/Hessian eigenbasis ("z-parameterisation") with
+per-axis asymmetric scalings σ⁺/σ⁻ estimated from a handful of
+log-posterior probes — cheap, integration-free — and offer
+`inla.hyperpar()` for a dense-grid refinement. Our
+`compute_skewness_corrections`
+([`integration.jl:314`](../packages/LatentGaussianModels.jl/src/inference/integration.jl))
+already implements the σ⁺/σ⁻ probe machinery for the Grid stretches.
+
+### Decision
+
+Two-part accessor upgrade, dimension-dependent, plus the missing storage.
+
+1. **`INLAResult` gains a `log_π::Vector{Float64}` field** — the
+   unnormalised `log π̂(θ_k | y)` at each *retained* design point,
+   aligned with `θ_points` / `θ_weights`. Populated for free in
+   `_inla_integrate` (the values are already computed for the IS
+   reweight) and as `[lp.log_marginal]` in the 0-hyperparameter fast
+   path. No numerical output changes anywhere: the field is
+   write-only until `posterior_marginal_θ` reads it.
+
+2. **`posterior_marginal_θ(res, j; method = :auto, model = nothing,
+   y = nothing, …)`** with methods:
+
+   - `:gaussian` — current behaviour, unchanged, kept as the escape
+     hatch.
+   - `:integrated`, `m == 1` — reuse the design line exactly (the
+     docstring's promised "density numerically integrated over the INLA
+     design points"): density ∝ `exp(log_π)` at the sorted design
+     points, trapezoid-normalised, evaluated on the output grid by
+     monotone interpolation of the log-density with linear log-density
+     extrapolation beyond the design span, then renormalised. Zero new
+     `laplace_mode` calls. Covers every 1-hyperparameter model (the
+     `:auto` scheme resolves to `Grid()` for m ≤ 2, and CCD itself
+     falls back to `Grid(7)` at m = 1).
+   - `:integrated`, `m ≥ 2` — conditional-mode profile slice, requires
+     `model` and `y` (same convention as `posterior_marginal_x` with
+     `SimplifiedLaplace`/`FullLaplace`; throws `ArgumentError`
+     otherwise). For grid values `t` of `θ_j`, evaluate
+     `log π̂(θ(t) | y)` along the Gaussian-conditional path
+     `θ(t) = θ̂ + (Σθ[:, j] / Σθ[j, j]) (t − θ̂_j)` via the existing
+     `_neg_log_posterior_θ` closure. Under the local-Gaussian
+     approximation the conditional normaliser is `t`-independent, so
+     the renormalised slice *is* the Laplace-approximate marginal.
+     Evaluated on an internal profile grid (default 21 points spanning
+     ±4 conditional sd) with the same 25-nat early-truncation rule as
+     `full_laplace.jl`, then interpolated onto the output grid. Cost:
+     ≤ 21 warm-startable `laplace_mode` calls per hyperparameter,
+     on demand.
+   - `:auto` (default) — `:integrated` when it is free or possible
+     (m == 1 always; m ≥ 2 when `model` and `y` are supplied),
+     `:gaussian` otherwise. Documented explicitly in the docstring so
+     the fallback is never silent-*and*-surprising.
+
+Out of scope for the first PR: user-scale marginal transforms (the
+Jacobian lives in tests for now), R-INLA-style `summary.hyperpar`
+accessors built on top, and reusing the profile slices to refine
+`θ_mean`. Each is a natural follow-up once the density itself is gated.
+
+### Alternatives considered
+
+- **Kernel-smoothed projection of the IS-weighted design cloud**
+  (works for any scheme, no new evaluations at m ≥ 2): rejected —
+  bandwidth-sensitive, inflates variance by the kernel width, and on a
+  5×5 Grid the per-coordinate projection has too few distinct support
+  points for a credible density.
+- **Martins §3.2 integration-free split-normal construction** (what
+  R-INLA's cheap default does): viable and cheap (2m + 1 probes we
+  already know how to make), but strictly less accurate than fresh
+  profile slices and requires 1-D convolution machinery for the
+  linear-combination marginal. Recorded as the candidate no-`model`
+  fallback for m ≥ 2 if users need one; not part of this ADR.
+- **Dense tensor re-integration** (`refine_hyperposterior` at
+  `n_grid^m` then marginalise): cost explodes with m, and the
+  eigen-axis grid still needs projection + smoothing to become a
+  coordinate marginal — it inherits the cloud problem it was meant to
+  solve.
+
+### Consequences
+
+- **Buys:** closes the highest-visibility R-INLA parity gap of the
+  three Tier-4 items; un-defers the Scotland classical-BYM τ_b point
+  comparison; gives `refine_hyperposterior` output a density-grade
+  consumer. Validated against already-stored oracle marginals — no R
+  round-trip.
+- **Costs:** one struct field (internal; both construction sites are in
+  `inla.jl`, none in tests); m ≥ 2 accuracy is itself a Laplace-flavour
+  approximation (exact only when `π̂(θ|y)` is Gaussian) — gated at the
+  5 % hyperparameter oracle tolerance; ~21 extra Laplace fits per
+  hyperparameter for the m ≥ 2 path, opt-in.
+- **Escape hatch:** `method = :gaussian` is bit-for-bit the previous
+  behaviour; `:auto` resolves to it whenever the integrated path lacks
+  inputs.
+
+### Acceptance criteria
+
+- Tier 1 (regression): near-Gaussian θ-posterior (Gaussian likelihood,
+  generous data) — `:integrated` vs `:gaussian` densities agree in
+  sup-norm within a tight tolerance; m = 1 self-consistency — trapezoid
+  mean of the integrated density matches `res.θ_mean[j]` within
+  quadrature error (same measure, same points); m = 2 — profile-slice
+  marginal moments match a dense `refine_hyperposterior` reference
+  within tolerance.
+- Tier 2 (oracle, existing fixtures): Brunei (m = 1), Scotland BYM2 and
+  Pennsylvania BYM2 (m = 2) — mean/sd of the Jacobian-transformed
+  integrated marginal vs the same moments computed from the fixture's
+  `marginals_hyperpar` grid, within the 5 % hyperparameter tolerance.
+  Rewrite the deferred `test_scotland_bym.jl` τ_b assertion as a
+  user-scale mean-to-mean comparison.
+- Full dev-linked LatentGaussianModels suite green; all paths not
+  calling `posterior_marginal_θ` bit-identical.
+
+### Implementation findings (2026-07-05)
+
+Landed as designed, with one acceptance criterion amended by what the
+data showed:
+
+- Tier-2 gates pass on the identifiable fixtures: Brunei (m = 1,
+  user-scale τ mean within 5 %, sd within 10 % of the stored
+  `marginals_hyperpar` moments), Scotland BYM2 and Pennsylvania BYM2
+  (m = 2 profile slice, mean within 10 %, sd within 25 %).
+- The planned "user-scale mean-to-mean" rewrite of the deferred
+  `test_scotland_bym.jl` τ_b comparison is **not achievable on that
+  fixture** — and the reason is informative. With the
+  statistic-mismatch (mode-vs-mean + Jacobian) problem removed by this
+  accessor, a genuine fit-level gap remains (~2× on the τ_b mean): the
+  classical-BYM `(τ_v, τ_b)` posterior is a non-identified ridge
+  (Eberly & Carlin 2000) and the two implementations distribute ridge
+  mass differently — R-INLA's own fixture reports τ_v mean 1005 with
+  sd 7756. The straight-path profile slice is faithful to the local
+  Laplace picture but cannot see off-path ridge mass; this is now a
+  documented limitation in the `posterior_marginal_θ` docstring. The
+  test instead asserts tail-robust two-sided consistency (Julia's
+  integrated median inside R-INLA's 95 % CI; R-INLA's mean inside
+  Julia's integrated central 95 % band), with tight τ parity delegated
+  to the identifiable BYM2 fixtures.
+
+### References
+
+- Martins, Simpson, Lindgren & Rue (2013) §3.2–3.3 — R-INLA's
+  hyperparameter-marginal construction (`references/papers.md`).
+- Rue, Martino & Chopin (2009) §6.5 — design construction, σ⁺/σ⁻.
+- [`review-2026-07-remediation.md`](review-2026-07-remediation.md)
+  Tier-4 item 16 — the backlog entry this scopes.
+- [`replan-2026-04-28.md`](replan-2026-04-28.md) Phase K — the original
+  "integrated θ-marginal accessor" promise.
+- [`test_scotland_bym.jl`](../packages/LatentGaussianModels.jl/test/oracle/test_scotland_bym.jl)
+  — the deferred comparison, now replaced by the two-sided consistency
+  check described above.

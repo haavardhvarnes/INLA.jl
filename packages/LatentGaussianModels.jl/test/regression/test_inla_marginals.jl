@@ -40,7 +40,10 @@ end
     model = LatentGaussianModel(ℓ, (c,), A)
 
     res = inla(model, y)
-    m = posterior_marginal_θ(res, 1; grid_size=201, span=6.0)
+    # `method = :gaussian` pins the closed-form path this testset was
+    # written for; the `:integrated` default (ADR-046) is covered in
+    # test_integrated_theta_marginal.jl.
+    m = posterior_marginal_θ(res, 1; method=:gaussian, grid_size=201, span=6.0)
     Δ = m.θ[2] - m.θ[1]
     area = (sum(m.pdf) - 0.5 * (m.pdf[1] + m.pdf[end])) * Δ
     @test isapprox(area, 1.0; atol=1.0e-3)

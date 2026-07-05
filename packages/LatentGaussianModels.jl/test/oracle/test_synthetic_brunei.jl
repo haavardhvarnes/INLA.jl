@@ -24,7 +24,7 @@ using SparseArrays
 using LinearAlgebra: I, SymTridiagonal
 using LatentGaussianModels: PoissonLikelihood, Intercept, Generic0,
                             GammaPrecision, LatentGaussianModel,
-                            inla, posterior_marginal_x,
+                            inla, posterior_marginal_x, posterior_marginal_θ,
                             log_marginal_likelihood,
                             FullLaplace, SimplifiedLaplace
 using GMRFs: LinearConstraint
@@ -121,6 +121,21 @@ end
             mlik_J = log_marginal_likelihood(res)
             @test isfinite(mlik_J)
             @test _rel_brunei(mlik_J, mlik_R) < BRUNEI_MLIK_REL_TOL
+
+            # --- Integrated θ marginal vs R-INLA marginals.hyperpar ----
+            # ADR-046: dim(θ) = 1, so the integrated marginal reuses the
+            # fit's design points at zero extra cost. Both densities are
+            # reduced to user-scale (τ = exp θ) trapezoid moments through
+            # the same quadrature (`oracle_pdf_moments`).
+            if !haskey(fx, "marginals_hyperpar")
+                @test_skip "fixture has no `marginals_hyperpar` — regenerate with the current R script"
+            else
+                mh_x, mh_y = marginal_grid(fx["marginals_hyperpar"]["Precision for idx"])
+                mom_R = oracle_pdf_moments(mh_x, mh_y)
+                mom_J = precision_marginal_moments(posterior_marginal_θ(res, 1))
+                @test abs(mom_J.mean - mom_R.mean) / mom_R.mean < 0.05
+                @test abs(mom_J.sd - mom_R.sd) / mom_R.sd < 0.10
+            end
 
             # --- Per-coordinate FullLaplace marginal mean/sd vs R-INLA -
             sr = fx["summary_random"]["idx"]

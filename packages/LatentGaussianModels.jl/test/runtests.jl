@@ -117,6 +117,9 @@ using GMRFs
     @testset "INLA — Marginals + Accessors" begin
         include("regression/test_inla_marginals.jl")
     end
+    @testset "INLA — Integrated θ marginals (ADR-046)" begin
+        include("regression/test_integrated_theta_marginal.jl")
+    end
     @testset "INLA — Integration scheme consistency" begin
         include("regression/test_integration_scheme_consistency.jl")
     end

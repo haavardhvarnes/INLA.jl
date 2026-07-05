@@ -109,6 +109,11 @@ end
 - `Σθ::Matrix{Float64}` — Gaussian covariance approximation at `θ̂`.
 - `θ_points::Vector{Vector{Float64}}` — integration design points.
 - `θ_weights::Vector{Float64}` — normalised posterior weights on the points.
+- `log_π::Vector{Float64}` — unnormalised `log π̂(θ_k | y)` (Laplace
+  log-marginal plus log hyperprior) at each retained design point, aligned
+  with `θ_points`. Consumed by [`posterior_marginal_θ`](@ref) with
+  `method = :integrated` (ADR-046); not recoverable from `θ_weights`
+  because the base quadrature weights are folded in there.
 - `laplaces::Vector{LaplaceResult}` — Laplace fit at each design point.
 - `x_mean::Vector{Float64}` — posterior mean of `x | y`, integrated over `θ`.
 - `x_var::Vector{Float64}` — posterior variance of `x | y`, integrated over `θ`.
@@ -121,6 +126,7 @@ struct INLAResult <: AbstractInferenceResult
     Σθ::Matrix{Float64}
     θ_points::Vector{Vector{Float64}}
     θ_weights::Vector{Float64}
+    log_π::Vector{Float64}
     laplaces::Vector{LaplaceResult}
     x_mean::Vector{Float64}
     x_var::Vector{Float64}
@@ -372,7 +378,7 @@ function _inla_integrate(m::LatentGaussianModel, y,
         θ_mean .+= w[k] .* points[k]
     end
 
-    return INLAResult(θ̂, Σθ, points, w, laplaces,
+    return INLAResult(θ̂, Σθ, points, w, log_π, laplaces,
         x_mean, x_var, θ_mean, log_marginal, opt_result)
 end
 
@@ -396,7 +402,7 @@ function _fit_inla_no_hyperparameters(m::LatentGaussianModel, y, strategy::INLA)
     x_mean = mode
     x_var = cond_var
 
-    return INLAResult(θ̂, Σθ, [θ̂], [1.0], [lp],
+    return INLAResult(θ̂, Σθ, [θ̂], [1.0], [lp.log_marginal], [lp],
         x_mean, x_var, θ̂, lp.log_marginal, nothing)
 end
 

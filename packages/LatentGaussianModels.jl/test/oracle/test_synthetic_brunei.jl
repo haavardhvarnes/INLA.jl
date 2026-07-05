@@ -175,6 +175,23 @@ end
                 mean_J_sl[i] = μ
             end
             @test maximum(abs, mean_J_fl .- mean_J_sl) > 1.0e-4
+
+            # --- Integration-stage FullLaplace summaries (item 16.2) ----
+            # `INLA(latent_strategy = FullLaplace())` must reproduce
+            # R-INLA's `summary.random` directly in `x_mean` / `x_var`,
+            # at the same tolerances as the per-coordinate accessor
+            # comparison above (same densities, same mixture — this
+            # gates the integration-stage wiring, grid anchoring, and
+            # moment computation).
+            res_fl = inla(model, y; int_strategy=:grid,
+                latent_strategy=FullLaplace())
+            b_mean_J = res_fl.x_mean[2:(n + 1)]
+            b_sd_J = sqrt.(res_fl.x_var[2:(n + 1)])
+            @test maximum(abs, b_mean_J .- mean_R) < BRUNEI_MEAN_ABS_TOL
+            @test maximum(abs, b_sd_J .- sd_R) < BRUNEI_SD_ABS_TOL
+            # θ-stage unaffected by the summary replacement.
+            @test res_fl.θ̂ == res.θ̂
+            @test res_fl.log_marginal == res.log_marginal
         end
     end
 end

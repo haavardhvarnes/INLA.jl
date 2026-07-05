@@ -40,6 +40,14 @@ symbols (`:gaussian`, `:simplified_laplace`). See [ADR-026].
   mean-shift correction `Δx(θ) = ½ H⁻¹ Aᵀ (h³ ⊙ σ²_η)` per integration
   point before accumulating `x_mean` / `x_var`. Reduces to `Gaussian`
   exactly when the likelihood third derivative `∇³_η log p` is zero.
+- `FullLaplace()` / `:full_laplace` — after the Gaussian accumulation
+  pass, replace each coordinate's `x_mean[i]` / `x_var[i]` with the
+  trapezoid moments of the per-`x_i` refitted-Laplace mixture (the same
+  density `posterior_marginal_x(strategy = FullLaplace())` exposes).
+  R-INLA's `strategy = "laplace"` applied to the latent summaries. Cost:
+  up to `n_x × n_grid × n_points` warm-started Newton refits per fit —
+  opt-in for sharply non-Gaussian latents. See [`FullLaplace`](@ref)
+  for the `n_grid` / `span` knobs.
 
 The mean-shift correction is independent of the density-shape skew
 correction in `posterior_marginal_x(strategy = :simplified_laplace)`:
@@ -378,8 +386,9 @@ function _inla_integrate(m::LatentGaussianModel, y,
         θ_mean .+= w[k] .* points[k]
     end
 
-    return INLAResult(θ̂, Σθ, points, w, log_π, laplaces,
+    res = INLAResult(θ̂, Σθ, points, w, log_π, laplaces,
         x_mean, x_var, θ_mean, log_marginal, opt_result)
+    return _apply_integration_moments(latent_strategy, res, m, y, laplace)
 end
 
 """
@@ -402,8 +411,10 @@ function _fit_inla_no_hyperparameters(m::LatentGaussianModel, y, strategy::INLA)
     x_mean = mode
     x_var = cond_var
 
-    return INLAResult(θ̂, Σθ, [θ̂], [1.0], [lp.log_marginal], [lp],
+    res = INLAResult(θ̂, Σθ, [θ̂], [1.0], [lp.log_marginal], [lp],
         x_mean, x_var, θ̂, lp.log_marginal, nothing)
+    return _apply_integration_moments(strategy.latent_strategy, res, m, y,
+        strategy.laplace)
 end
 
 # Integration-stage hook. Defined per-strategy here so future strategies
@@ -421,12 +432,26 @@ function _integration_mean_shift(::SimplifiedLaplace, lp::LaplaceResult,
     _sla_mean_shift(lp, m, y)
 end
 
-# `FullLaplace` (PR-3) only intercepts `posterior_marginal_x`; the
-# integration-stage summary stays Gaussian until PR-4 wires the
-# per-coordinate Laplace refit into `_inla_integrate`.
+# `FullLaplace` keeps a zero shift in the accumulation pass: the pilot
+# summaries stay Gaussian and are then replaced wholesale by
+# `_apply_integration_moments(::FullLaplace, …)` (full_laplace.jl),
+# which needs the pilot `x_mean` / `x_var` to anchor its refit grids.
 function _integration_mean_shift(::FullLaplace, lp::LaplaceResult,
         m::LatentGaussianModel, y)
     zero(lp.mode)
+end
+
+# Integration-stage moment-replacement hook (the ADR-026 "PR-4"
+# follow-up). Runs after the accumulation pass on the assembled
+# `INLAResult`. `Gaussian` and `SimplifiedLaplace` are the identity —
+# their corrections are folded in per-point via
+# `_integration_mean_shift`. `FullLaplace` (full_laplace.jl) replaces
+# each coordinate's summary with the trapezoid moments of the
+# per-`x_i` refitted-Laplace mixture, using the pilot summaries as
+# grid anchors.
+function _apply_integration_moments(::AbstractMarginalStrategy,
+        res::INLAResult, m::LatentGaussianModel, y, laplace::Laplace)
+    res
 end
 
 # ---------------------------------------------------------------------

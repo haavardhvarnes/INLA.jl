@@ -129,15 +129,17 @@ roadmap items from real defects.
        comparison became a two-sided consistency check — the residual gap
        is classical-BYM ridge non-identifiability, not a statistic
        mismatch (see ADR-046 implementation findings).
-    2. **FullLaplace integration-stage means/vars.** Design pre-committed
-       by ADR-026 ("PR-4"); per-`x_i` refit machinery + warm-start sweeps
-       exist in `full_laplace.jl`; Brunei fixture's `summary_random`
-       (strategy = "laplace") is a direct oracle for `x_mean`/`x_var`.
-       Needs a small hook reshape: `_integration_mean_shift` cannot
-       express FL (per-coordinate moments, not a mode shift) — replace
-       with an `_integration_moments(strategy, …) -> (mean_k, var_k)`
-       hook. Reuse Brunei's widened SD tolerance (pure FL vs R-INLA's
-       VB-corrected FL, see fixture header).
+    2. ✅ **FullLaplace integration-stage means/vars** (branch
+       `feat/full-laplace-integration-means`, stacked on 16.1). Design
+       pre-committed by ADR-026 ("PR-4"). Implemented as a
+       strategy-dispatched post-pass `_apply_integration_moments` that
+       keeps the Gaussian pilot accumulation and replaces each
+       coordinate's summary with trapezoid moments of the existing
+       `_full_laplace_pdf` mixture (grids anchored at the pilot
+       summaries); `FullLaplace` gained the ADR-026 `n_grid`/`span`
+       fields. Oracle-gated on Brunei `summary_random` at the
+       per-coordinate tolerances (0.025 mean / 0.075 sd, the pure-FL vs
+       VB-corrected-FL band).
     3. **SimplifiedLaplace variance correction** — last, and gated on its
        own ADR. Needs a new likelihood-contract method
        (`∇⁴_η_log_density`) across all closed-form families + fallback;

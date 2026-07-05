@@ -142,10 +142,16 @@ end
     @test isapprox(Z, 1.0; atol=1.0e-6)
 end
 
-@testset "FullLaplace — `_integration_mean_shift` is zero (PR-3 scope)" begin
-    # PR-3 only intercepts `posterior_marginal_x`; the integration-stage
-    # summary must mirror Gaussian's mode-only path. PR-4 will replace
-    # this with the proper FullLaplace summary.
+@testset "FullLaplace — pilot shift is zero; summaries replaced post-pass" begin
+    # Through Phase L PR-3 the integration stage delegated to Gaussian.
+    # Since item 16.2 (the ADR-026 "PR-4" follow-up) the summaries are
+    # replaced by refitted-Laplace mixture moments in a post-pass. Two
+    # contracts survive: the accumulation-pass hook is still a zero
+    # shift (the Gaussian pilot anchors the refit grids), and on an
+    # exactly-Gaussian posterior the replaced summaries agree with the
+    # Gaussian strategy up to grid/trapezoid error — bit-identity is no
+    # longer expected. See test_full_laplace_integration.jl for the
+    # full integration-stage coverage.
     rng = Random.Xoshiro(20260504)
     n = 10
     y = randn(rng, n)
@@ -155,6 +161,12 @@ end
     res_g = inla(model, y; int_strategy=:grid, latent_strategy=Gaussian())
     res_f = inla(model, y; int_strategy=:grid, latent_strategy=FullLaplace())
 
-    @test isapprox(res_f.x_mean, res_g.x_mean; atol=1.0e-12, rtol=1.0e-12)
-    @test isapprox(res_f.x_var, res_g.x_var; atol=1.0e-12, rtol=1.0e-12)
+    lp = laplace_mode(model, y, res_g.θ̂)
+    @test all(iszero,
+        LatentGaussianModels._integration_mean_shift(FullLaplace(), lp,
+            model, y))
+
+    σ = sqrt.(max.(res_g.x_var, 0.0))
+    @test maximum(abs.(res_f.x_mean .- res_g.x_mean) ./ σ) < 0.02
+    @test maximum(abs.(sqrt.(res_f.x_var) .- σ) ./ σ) < 0.03
 end

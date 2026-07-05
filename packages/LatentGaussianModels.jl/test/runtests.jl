@@ -171,6 +171,9 @@ using GMRFs
     @testset "FullLaplace perf — Phase L PR-4" begin
         include("regression/test_full_laplace_perf.jl")
     end
+    @testset "FullLaplace — integration-stage summaries (item 16.2)" begin
+        include("regression/test_full_laplace_integration.jl")
+    end
     @testset "LogDensityProblems conformance" begin
         include("regression/test_log_density.jl")
     end

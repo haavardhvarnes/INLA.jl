@@ -17,11 +17,14 @@
 # `½ log|Q_{-i,-i}|` differ by an `a`-independent term per θ_k — see
 # the algebra in ADR-026 and Rue-Martino-Chopin (2009) §4.3).
 #
-# PR-3 ships the core. PR-4 will add: rank-1 `FactorCache` update for
-# the per-`x_i` constraint (avoiding a fresh sparse Cholesky per
-# evaluation point), an adaptive coarse refit grid + interpolation,
-# and `FullLaplace`-aware integration-stage summaries for
-# `INLAResult.x_mean` / `x_var`.
+# PR-3 shipped the core; the ADR-026 "PR-4" integration-stage
+# summaries landed with Tier-4 item 16.2:
+# `_apply_integration_moments(::FullLaplace, …)` below replaces
+# `INLAResult.x_mean` / `x_var` with the trapezoid moments of the same
+# per-`x_i` mixture. Still future perf work: rank-1 `FactorCache`
+# update for the per-`x_i` constraint (avoiding a fresh sparse
+# Cholesky per evaluation point) and an adaptive coarse refit grid +
+# interpolation.
 
 """
     laplace_mode_fixed_xi(model, y, θ, i, a;
@@ -183,6 +186,46 @@ function _full_laplace_pdf(res::INLAResult, i::Integer,
     Z = length(xs) ≥ 2 ? _trapz(xs, pdf) : zero(eltype(pdf))
     Z > 0 && (pdf ./= Z)
     return pdf
+end
+
+# Integration-stage summary replacement for `FullLaplace` (the
+# ADR-026 "PR-4" follow-up; hook and identity fallback in inla.jl).
+# For each coordinate, evaluate the per-`x_i` refitted-Laplace mixture
+# on a grid anchored at the pilot (Gaussian-pass) summary and replace
+# `x_mean[i]` / `x_var[i]` with its trapezoid moments. Coordinates
+# where every refit failed (all-zero mixture, e.g. hard-constrained
+# coordinates with ~zero pilot variance) keep their pilot summary —
+# mirroring the drop-and-continue failure policy of `_inla_integrate`.
+# The θ-stage outputs (`θ̂`, `Σθ`, weights, `log_marginal`) are
+# untouched by construction.
+function _apply_integration_moments(fl::FullLaplace, res::INLAResult,
+        m::LatentGaussianModel, y, laplace::Laplace)
+    x_mean = copy(res.x_mean)
+    x_var = copy(res.x_var)
+    for i in eachindex(x_mean)
+        σ0 = sqrt(max(res.x_var[i], 0.0))
+        σ0 = σ0 > 0 ? σ0 : 1.0
+        xs = collect(range(res.x_mean[i] - fl.span * σ0,
+            res.x_mean[i] + fl.span * σ0; length=fl.n_grid))
+        pdf = _full_laplace_pdf(res, i, m, y, xs; laplace=laplace)
+        all(iszero, pdf) && continue
+        μ, σ² = _grid_pdf_moments(xs, pdf)
+        x_mean[i] = μ
+        x_var[i] = σ²
+    end
+    return INLAResult(res.θ̂, res.Σθ, res.θ_points, res.θ_weights,
+        res.log_π, res.laplaces, x_mean, x_var, res.θ_mean,
+        res.log_marginal, res.optim_result)
+end
+
+# Trapezoid mean/variance of a gridded density, renormalised on the
+# grid. Callers guard against the all-zero case.
+function _grid_pdf_moments(xs::AbstractVector{<:Real},
+        pdf::AbstractVector{<:Real})
+    Z = _trapz(xs, pdf)
+    μ = _trapz(xs, xs .* pdf) / Z
+    σ² = max(_trapz(xs, (xs .- μ) .^ 2 .* pdf) / Z, 0.0)
+    return μ, σ²
 end
 
 # Trapezoid quadrature on a (possibly non-uniform) 1D grid.

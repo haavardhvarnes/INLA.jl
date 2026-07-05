@@ -90,6 +90,12 @@ using GMRFs
     @testset "Laplace — Hard constraint" begin
         include("regression/test_laplace_constrained.jl")
     end
+    @testset "Constrained marginal variances — dense oracle" begin
+        include("regression/test_constrained_variances_dense.jl")
+    end
+    @testset "Newton convergence" begin
+        include("regression/test_newton_convergence.jl")
+    end
     @testset "Safety net — Phase M PR-4" begin
         include("regression/test_safety_net.jl")
     end
@@ -101,6 +107,9 @@ using GMRFs
     end
     @testset "INLA — Marginals + Accessors" begin
         include("regression/test_inla_marginals.jl")
+    end
+    @testset "INLA — Integration scheme consistency" begin
+        include("regression/test_integration_scheme_consistency.jl")
     end
     @testset "Copy — fixed β=1.0 oracle + free β recovery" begin
         include("regression/test_copy.jl")

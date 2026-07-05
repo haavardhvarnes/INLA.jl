@@ -95,16 +95,26 @@ roadmap items from real defects.
 12. ✅ Make `_symmetrize!` genuinely in-place. Zero-alloc two-pass average of
     the transpose pair, guarded by a structural-symmetry check with the
     `(H+H')/2` fallback; bit-identical (2 → 0 allocations per Newton step).
-13. Fixed-sparsity-pattern numeric updates for `joint_precision`.
-14. Hot path via `apply!`/`apply_adjoint!`; longer term a `LaplaceWorkspace`.
-15. (new, from #22 benchmarking) The intrinsic null-space bump `V Vᵀ`
-    densifies the regularised precision — biggest structural win. **Design:
-    ADR-045 (Proposed)** in `plans/decisions.md`. **Spike done**
-    (`scripts/spikes/adr045_null_space_bump.jl`): when `H_s = Q + JᵀDJ` is
-    PD the bump is entirely unnecessary — constrained variances, log-det,
-    and mode are bump-invariant to machine ε. Option B collapses to "factor
-    sparse `H_s`, drop the bump when PD, keep kriging"; dense bump stays as
-    the singular-`H_s` fallback. Implementation next, oracle-gated.
+13. ~~Fixed-sparsity `joint_precision`~~ / 14. ~~lazy `apply!` hot path /
+    `LaplaceWorkspace`~~ — **deprioritised after profiling** (see
+    `plans/laplace-workspace-scoping.md`). A buffer-reuse workspace targets
+    only ~4% of `laplace_mode` allocation (H-assembly + vectors); the lazy
+    `apply!` path is <1% here (matters only for large space-time
+    `KroneckerMapping`). Not worth the plumbing.
+15. ✅ (new, from #22 benchmarking) The intrinsic null-space bump `V Vᵀ`
+    densifies the regularised precision. **ADR-045** + spike + implementation
+    all merged (#24, #25): factor sparse `H_s`, drop the bump when PD, keep
+    kriging; dense bump stays as the singular-`H_s` fallback. 139 → 20 MiB /
+    390 625 → 3 025 nnz on a 625-node constrained Besag; full oracle suite
+    unchanged.
+17. (new, from workspace scoping) **`scale_factor` recomputed every
+    `precision_matrix` call** is the real dominant allocator: 85% of
+    `laplace_mode` (18.3 MiB/call on a 625-node Besag). The Sørbye–Rue
+    geometric-mean-variance factor is θ-independent (a per-graph constant)
+    but rebuilds a dense `inv(Qperp)` on every call, across the dozens of
+    `laplace_mode` calls per fit. Fix: cache it at component construction
+    (Besag/BYM/BYM2/ICAR/Leroux). Bit-identical, oracle-gated. See
+    `plans/laplace-workspace-scoping.md`. **Highest-value remaining perf item.**
 
 ### Tier 4 — feature completion (roadmap)
 16. FullLaplace integration means; SimplifiedLaplace variance; integrated

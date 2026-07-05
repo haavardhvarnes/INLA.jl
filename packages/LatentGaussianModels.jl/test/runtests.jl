@@ -96,6 +96,9 @@ using GMRFs
     @testset "Constrained marginal variances — dense oracle" begin
         include("regression/test_constrained_variances_dense.jl")
     end
+    @testset "ADR-045 — null-space bump dropped when H_s is PD" begin
+        include("regression/test_bump_drop.jl")
+    end
     @testset "Newton convergence" begin
         include("regression/test_newton_convergence.jl")
     end

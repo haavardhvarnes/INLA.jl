@@ -105,12 +105,6 @@ function laplace_mode(m::LatentGaussianModel, y, θ::AbstractVector{<:Real};
         e_c = vcat(e_model, extra_constraint.rhs)
     end
     has_constr = size(C, 1) > 0
-    if has_constr
-        bump = _null_bump(C)
-        Q_reg = Q + bump
-    else
-        Q_reg = Q
-    end
 
     x = x0 === nothing ? zeros(Float64, m.n_x) : Vector{Float64}(x0)
     # Reset a non-finite warm-start. Callers may forward `x̂` from a
@@ -119,7 +113,7 @@ function laplace_mode(m::LatentGaussianModel, y, θ::AbstractVector{<:Real};
     # propagating the contamination into the Newton step.
     any(!isfinite, x) && fill!(x, 0.0)
 
-    # Build initial posterior precision and factor cache on Q_reg.
+    # Build initial posterior precision and factor cache.
     # `J` is the effective Jacobian `dη/dx` (= `A` for non-Copy models;
     # `A + B(β)` when a `CopyTargetLikelihood` is present), used in the
     # Hessian `Q + Jᵀ D J` and gradient `Jᵀ ∇η - Q x`.
@@ -127,9 +121,31 @@ function laplace_mode(m::LatentGaussianModel, y, θ::AbstractVector{<:Real};
     joint_apply_copy_contributions!(η, m, x, θ)
     ∇²η = joint_∇²_η_log_density(m, y, η, θ)
     D = Diagonal(-∇²η)
-    H = Q_reg + (J' * D * J)
-    H = _symmetrize!(H)
-    cache = GMRFs.FactorCache(H)
+
+    # ADR-045: for a constrained intrinsic component the null-space bump
+    # `V Vᵀ = Cᵀ (C Cᵀ)⁻¹ C` is unnecessary whenever `H_s = Q + Jᵀ D J` is
+    # already positive definite. Every constraint-corrected quantity the
+    # default path consumes — kriging marginal variances, `_log_det_HC`, the
+    # projected Newton step — is invariant to precision changes confined to
+    # `range(Cᵀ)`, so the sparse bump-free precision gives identical results
+    # (validated to machine ε in `scripts/spikes/adr045_null_space_bump.jl`)
+    # while avoiding the dense `O(n²)` bump. The dense bump is retained as a
+    # fallback for the singular case: `H_s` is rank-deficient only when the
+    # data does not identify the constrained null direction.
+    Q_reg = Q
+    H = _symmetrize!(Q + (J' * D * J))
+    cache = if has_constr
+        try
+            GMRFs.FactorCache(H)
+        catch err
+            _is_bad_theta_failure(err) || rethrow(err)
+            Q_reg = Q + _null_bump(C)
+            H = _symmetrize!(Q_reg + (J' * D * J))
+            GMRFs.FactorCache(H)
+        end
+    else
+        GMRFs.FactorCache(H)
+    end
 
     converged = false
     iter = 0

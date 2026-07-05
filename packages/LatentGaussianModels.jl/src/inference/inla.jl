@@ -360,7 +360,7 @@ function _inla_integrate(m::LatentGaussianModel, y,
         # Takahashi / selected inversion via GMRFs.marginal_variances (ADR-012);
         # kriging correction applied downstream in
         # `_constrained_marginal_variances` per Rue & Held (2005) §2.3.
-        cond_var = _constrained_marginal_variances(lp.precision, lp.constraint)
+        cond_var = _constrained_marginal_variances(lp.factor, lp.constraint)
         x_m2 .+= w[k] .* (mode_k .^ 2 .+ cond_var)
     end
     x_var = x_m2 .- x_mean .^ 2
@@ -392,7 +392,7 @@ function _fit_inla_no_hyperparameters(m::LatentGaussianModel, y, strategy::INLA)
     lp = laplace_mode(m, y, θ̂; strategy=strategy.laplace)
 
     mode = lp.mode .+ _integration_mean_shift(strategy.latent_strategy, lp, m, y)
-    cond_var = _constrained_marginal_variances(lp.precision, lp.constraint)
+    cond_var = _constrained_marginal_variances(lp.factor, lp.constraint)
     x_mean = mode
     x_var = cond_var
 

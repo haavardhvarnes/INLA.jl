@@ -19,15 +19,22 @@ precision `Q`.
 - `:dense` — densify `Q` and take a straight inverse. Correctness oracle
   only; slow.
 """
+# Takahashi selected-inversion diagonal from an existing sparse Cholesky
+# factor `F`. `selinv` returns the selected inverse in the factor's fill-
+# reducing permutation; `depermute=false` keeps that ordering so we undo it
+# once here with `invperm(p)`.
+function _selinv_diag(F)
+    Z, p = selinv(F; depermute=false)
+    d = diag(Z)
+    return d[invperm(p)]
+end
+
 function marginal_variances(Q::AbstractSparseMatrix; method::Symbol=:selinv)
     if method === :selinv
         # Route through `cholesky(Symmetric(Q))` so CHOLMOD never sees the
         # raw SparseMatrixCSC (which it inspects with `issymmetric` — this
         # fails at floating-point-level asymmetry from assembly order).
-        F = cholesky(Symmetric(SparseMatrixCSC(Q)))
-        Z, p = selinv(F; depermute=false)
-        d = diag(Z)
-        return d[invperm(p)]
+        return _selinv_diag(cholesky(Symmetric(SparseMatrixCSC(Q))))
     elseif method === :dense
         return diag(inv(Symmetric(Matrix(Q))))
     else
@@ -35,6 +42,10 @@ function marginal_variances(Q::AbstractSparseMatrix; method::Symbol=:selinv)
                             "use :selinv or :dense"))
     end
 end
+
+# `marginal_variances(cache::FactorCache)` — the factor-reusing overload —
+# lives in factorization.jl, which is included after this file so that
+# `FactorCache` is defined at method-definition time.
 
 """
     marginal_variances(g::AbstractGMRF; method = :auto) -> Vector{Float64}

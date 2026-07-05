@@ -74,4 +74,22 @@ const _W_PATH = [0 1 0 0;
         @test maximum(abs, got .- ref) < 1.0e-8
         @test all(got .> 0)
     end
+
+    @testset "cached-factor overload is bit-faithful to re-factorisation" begin
+        # The hot path reuses LaplaceResult.factor for selected inversion
+        # instead of re-factorising lp.precision. The two must agree
+        # exactly (same matrix, same Cholesky), so equality — not just
+        # approximate — is the right assertion here.
+        for W in (_W_PATH, _W_DISCONNECTED)
+            g = GMRFGraph(W)
+            n = num_nodes(g)
+            model = LatentGaussianModel(GaussianLikelihood(), (Besag(g),),
+                sparse(1.0I, n, n))
+            y = randn(rng, n)
+            lp = laplace_mode(model, y, [log(2.5), log(0.9)])
+            v_refactor = _constrained_marginal_variances(lp.precision, lp.constraint)
+            v_cached = _constrained_marginal_variances(lp.factor, lp.constraint)
+            @test v_cached == v_refactor
+        end
+    end
 end

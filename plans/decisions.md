@@ -5192,6 +5192,43 @@ the marginal-variance low-rank correction (B) and, if pursued, the
 augmented-system selinv (C) each need a numerical spike validated against
 the dense oracle before a line of production code changes.
 
+### Spike result (2026-07-05)
+
+[`scripts/spikes/adr045_null_space_bump.jl`](../scripts/spikes/adr045_null_space_bump.jl)
+validated option (B) on connected and disconnected Besag models. The result
+is **stronger than the low-rank plan assumed**: when `H_s` is PD, the bump
+is not merely reconstructable via Woodbury — it is **entirely unnecessary**.
+Every constrained quantity is bump-invariant to machine precision, so the
+sparse `H_s` factor can be used directly with the *existing* kriging
+machinery. Measured `max|Δ|` between the sparse-`H_s` path and the current
+dense-`H` path (`H = H_s + V Vᵀ`):
+
+| Quantity | connected (n=144, k=1) | disconnected (n=50, k=2) |
+|---|---|---|
+| H1 constrained marginal variances | 1.7e-16 | 1.7e-16 |
+| H2 constrained log-det `_log_det_HC` | 5.7e-14 | 1.4e-14 |
+| H3 ‖projected bump-free Newton step at mode‖∞ | 4.5e-16 | 2.5e-16 |
+| Woodbury solve vs dense `H\b` (cross-check) | 7.8e-16 | 2.2e-16 |
+
+`H_s` was PD in both cases, and the bump inflated the stored precision from
+**672 → 20 736 nonzeros (31×, fully dense)** on the 144-node graph — the
+densification this ADR targets, quantified.
+
+**Why bump-invariant:** `V Vᵀ = Cᵀ(CCᵀ)⁻¹C` lives entirely in `range(Cᵀ)`,
+and every constrained quantity (kriging-corrected covariance, `_log_det_HC`,
+the constraint-projected Newton step) is invariant to precision changes
+confined to `range(Cᵀ)`. This is an identity, not a numerical coincidence —
+confirmed to ε across two topologies.
+
+**Consequence for (B):** it collapses from "Woodbury on `H_s`" to **"factor
+the sparse `H_s`; drop the bump when it is PD; keep the kriging correction
+unchanged."** No low-rank correction is needed in the common (PD) case — the
+Woodbury path is only a *potential* refinement, and the dense bump remains
+the fallback when `H_s` is singular. This makes (B) markedly smaller and
+lower-risk than originally scoped. Implementation still gates each call site
+(marginal variances, log-marginal, mode) on the dense-oracle test and the
+R-INLA oracle fixtures.
+
 ### Consequences
 
 - **Buys:** removes the `O(n²)`/`O(n³)` blow-up for constrained intrinsic

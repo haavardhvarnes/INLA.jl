@@ -119,6 +119,34 @@ roadmap items from real defects.
 ### Tier 4 — feature completion (roadmap)
 16. FullLaplace integration means; SimplifiedLaplace variance; integrated
     θ marginals.
+    **Scoped 2026-07-05 — execution order (most self-contained / highest
+    parity value first):**
+    1. ✅ **Integrated θ marginals** (ADR-046, Accepted; branch
+       `feat/integrated-theta-marginals`). `posterior_marginal_θ` gains
+       `method = :auto | :integrated | :gaussian`; `INLAResult` stores
+       `log_π`. Oracle-gated on Brunei / Scotland-BYM2 / Pennsylvania-BYM2
+       via the stored `marginals_hyperpar` grids. The scotland_bym τ_b
+       comparison became a two-sided consistency check — the residual gap
+       is classical-BYM ridge non-identifiability, not a statistic
+       mismatch (see ADR-046 implementation findings).
+    2. **FullLaplace integration-stage means/vars.** Design pre-committed
+       by ADR-026 ("PR-4"); per-`x_i` refit machinery + warm-start sweeps
+       exist in `full_laplace.jl`; Brunei fixture's `summary_random`
+       (strategy = "laplace") is a direct oracle for `x_mean`/`x_var`.
+       Needs a small hook reshape: `_integration_mean_shift` cannot
+       express FL (per-coordinate moments, not a mode shift) — replace
+       with an `_integration_moments(strategy, …) -> (mean_k, var_k)`
+       hook. Reuse Brunei's widened SD tolerance (pure FL vs R-INLA's
+       VB-corrected FL, see fixture header).
+    3. **SimplifiedLaplace variance correction** — last, and gated on its
+       own ADR. Needs a new likelihood-contract method
+       (`∇⁴_η_log_density`) across all closed-form families + fallback;
+       Pennsylvania fixture stores only SLA *means* (`bym_mean_sla`), so
+       SDs require fixture regeneration; and modern R-INLA (25.10.19)
+       routes all strategies through a unified VB-corrected pipeline
+       (see `synthetic_brunei.R` header), so the ADR must first decide
+       the oracle target: classic-mode R-INLA fixtures vs widened
+       tolerances against the VB-corrected output.
 
 ## Execution status
 

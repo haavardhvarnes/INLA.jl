@@ -58,7 +58,7 @@ function _mock_inla_result(model::LatentGaussianModel; seed::Int=1)
     x_mean = [Float64(seed) + Float64(i) for i in 1:nx]
     x_var = [0.5 + 0.01 * i for i in 1:nx]
     return INLAResult(
-        Float64[], zeros(0, 0), Vector{Float64}[], Float64[],
+        Float64[], zeros(0, 0), Vector{Float64}[], Float64[], Float64[],
         LaplaceResult[], x_mean, x_var, Float64[], NaN, nothing
     )
 end

@@ -14,7 +14,8 @@ using SparseArrays
 using LinearAlgebra: I
 using LatentGaussianModels: PoissonLikelihood, Intercept, FixedEffects,
                             BYM2, LatentGaussianModel, inla, PCPrecision,
-                            fixed_effects, hyperparameters, log_marginal_likelihood
+                            fixed_effects, hyperparameters, log_marginal_likelihood,
+                            posterior_marginal_θ
 using GMRFs: GMRFGraph
 
 const FIXTURE = "pennsylvania_bym2"
@@ -103,6 +104,21 @@ end
             mlik_R = Float64(fx["mlik"][1])
             mlik_J = log_marginal_likelihood(res)
             @test _rel(mlik_J, mlik_R) < MLIK_REL_TOL
+
+            # --- Integrated θ marginal for τ (ADR-046) --------------------
+            # Same comparison as the Scotland BYM2 fixture: user-scale
+            # profile-slice moments vs the stored marginals.hyperpar
+            # density for the precision.
+            if !haskey(fx, "marginals_hyperpar")
+                @test_skip "fixture has no `marginals_hyperpar` — regenerate with the current R script"
+            else
+                mh_x, mh_y = marginal_grid(fx["marginals_hyperpar"]["Precision for region"])
+                mom_R = oracle_pdf_moments(mh_x, mh_y)
+                mom_J = precision_marginal_moments(
+                    posterior_marginal_θ(res, 1; model=model, y=y))
+                @test abs(mom_J.mean - mom_R.mean) / mom_R.mean < TAU_REL_TOL
+                @test abs(mom_J.sd - mom_R.sd) / mom_R.sd < 0.25
+            end
 
             # --- ADR-016: simplified.laplace BYM mean parity --------------
             if !haskey(fx, "bym_mean_sla")

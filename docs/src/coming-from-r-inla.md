@@ -246,11 +246,23 @@ an `INLAResult` and gives one accessor per concern.
 | `res$cpo$cpo` | `cpo(rng, res, model, y)` |
 | `res$cpo$pit` | `pit(rng, res, model, y)` |
 | `res$loo$elpd_loo` (via `loo` package) | `psis_loo(res, model, y)` |
+| `res$marginals.fixed[[i]]` / `res$marginals.random` | `posterior_marginal_x(res, i)` |
+| `res$marginals.hyperpar[[j]]` | `posterior_marginal_θ(res, j; model = model, y = y)` |
 | (no equivalent) | `pp_check(rng, res, model, y_obs)` |
 
 `fixed_effects`, `random_effects`, and `hyperparameters` return a
 vector of named tuples with `.name`, `.mean`, `.sd`, `.lower`,
 `.upper`, where `level` controls the credible-interval coverage.
+
+One scale caveat on the marginal densities: R-INLA's
+`marginals.hyperpar` are on the *user* scale (precision, correlation),
+while `posterior_marginal_θ` returns the density on the *internal*
+scale (log precision, logit correlation). Transform with the usual
+change-of-variables Jacobian, e.g. `p(τ) = p_θ(log τ) / τ` for a
+precision. By default the density is integrated over the INLA design
+(R-INLA's integrated hyperparameter marginals); for models with two or
+more hyperparameters pass `model` and `y` to enable it, or it falls
+back to the Gaussian approximation at the mode.
 
 ## Sampling
 

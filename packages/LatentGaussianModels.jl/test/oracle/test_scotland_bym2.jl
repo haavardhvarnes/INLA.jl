@@ -18,7 +18,8 @@ using SparseArrays
 using LinearAlgebra: I
 using LatentGaussianModels: PoissonLikelihood, Intercept, FixedEffects,
                             BYM2, LatentGaussianModel, inla, PCPrecision,
-                            fixed_effects, hyperparameters, log_marginal_likelihood
+                            fixed_effects, hyperparameters, log_marginal_likelihood,
+                            posterior_marginal_θ
 using GMRFs: GMRFGraph
 
 const FIXTURE = "scotland_bym2"
@@ -136,6 +137,27 @@ end
             mlik_R = Float64(fx["mlik"][1])
             mlik_J = log_marginal_likelihood(res)
             @test _rel(mlik_J, mlik_R) < MLIK_REL_TOL
+
+            # --- Integrated θ marginal for τ (ADR-046) --------------------
+            # dim(θ) = 2 → conditional-mode profile slice (fresh
+            # warm-started Laplace fits along the τ axis). User-scale
+            # moments vs the fixture's marginals.hyperpar density,
+            # both reduced through the same trapezoid quadrature.
+            if !haskey(fx, "marginals_hyperpar")
+                @test_skip "fixture has no `marginals_hyperpar` — regenerate with the current R script"
+            else
+                mh_x, mh_y = marginal_grid(fx["marginals_hyperpar"]["Precision for region"])
+                mom_R = oracle_pdf_moments(mh_x, mh_y)
+                mom_J = precision_marginal_moments(
+                    posterior_marginal_θ(res, 1; model=model, y=y))
+                @test abs(mom_J.mean - mom_R.mean) / mom_R.mean < TAU_REL_TOL
+                @test abs(mom_J.sd - mom_R.sd) / mom_R.sd < 0.25
+
+                # φ marginal: weakly identified on Scotland — sanity only.
+                mφ = posterior_marginal_θ(res, 2; model=model, y=y)
+                @test all(isfinite, mφ.pdf)
+                @test any(>(0), mφ.pdf)
+            end
         end
     end
 end

@@ -51,6 +51,7 @@ For navigation; ADR bodies appear in numerical order under the index.
 - [ADR-016](#adr-016-simplified-laplace-mean-shift-correction-rue-martino-added-as-opt-in-latent_strategy) — simplified-Laplace mean-shift correction
 - [ADR-027](#adr-027-is-correction-port-from-integratednestedlaplacejl--declined-for-v0x-deferred-to-per-workflow-strategy-if-a-use-case-appears) — IS correction declined
 - [ADR-031](#adr-031-targeted-exception-classification-in-the-laplace-bad-θ-wrapper) — targeted exception classification
+- [ADR-045](#adr-045-proposed-de-densify-the-constrained-laplace-null-space-bump-low-rank-or-bordered-kkt) — de-densify the constrained-Laplace null-space bump (Proposed)
 
 **Observation mapping & projectors**
 - [ADR-005](#adr-005-projector-matrix-a-as-a-model-field-in-v0x-possibly-promoted-later) — projector A as model field
@@ -5073,3 +5074,140 @@ share the same structural-grid-vs-HMC-tail behaviour against INLA.
 - ADR-009 — `LGMTuring.jl` package; tier-3 implementation.
 - `compare_posteriors(...)` harness — emits the diagnostic rows
   consumed by the tolerance gates.
+
+## ADR-045 (Proposed): De-densify the constrained-Laplace null-space bump — low-rank or bordered KKT
+
+Status: Proposed
+Date: 2026-07-05
+
+### Context
+
+Surfaced by the 2026-07 performance review
+([`plans/review-2026-07-remediation.md`](review-2026-07-remediation.md),
+Tier-3 item 15) while benchmarking the factor-reuse change (ADR-adjacent,
+PR #22). A single 625-node **sparse** Besag fit allocates ~139 MiB inside
+one `laplace_mode`; ~86% of that is downstream of one construction.
+
+For an intrinsic component under a hard constraint `C x = e`, the Laplace
+step regularises the singular precision `Q` with a null-space bump so the
+inner Newton factorisation is well-posed:
+
+    Q_reg = Q + V Vᵀ,   V Vᵀ = Cᵀ (C Cᵀ)⁻¹ C     ([`inference/constraints.jl:71`](../packages/LatentGaussianModels.jl/src/inference/constraints.jl) `_null_bump`)
+
+`V Vᵀ` is the orthogonal projector onto `range(Cᵀ)` — **rank k**, where
+`k` = number of constraint rows (one sum-to-zero per connected component,
+so `k` is tiny: 1 for connected Besag/BYM2, a handful for disconnected
+graphs). But `_null_bump` forms it as a **dense `n × n` matrix**: for a
+connected sum-to-zero constraint `C = onesᵀ`, `V Vᵀ = (1/n)·ones(n, n)`,
+fully dense. `sparse(B)` then stores `n²` nonzeros.
+
+`Q_reg = Q + V Vᵀ` is therefore dense, and everything built on it inherits
+the density:
+
+- `H = Q_reg + Jᵀ D J` ([`laplace.jl:130/143/185`](../packages/LatentGaussianModels.jl/src/inference/laplace.jl)) — dense.
+- `FactorCache(H)` / `update!` — dense Cholesky, `O(n³)` per Newton step.
+- `lp.precision = H` stored dense; selected inversion / marginal variances
+  operate on a dense factor.
+
+This is the dominant allocation source for constrained intrinsic models
+(disease mapping: Besag/BYM/BYM2/ICAR/Leroux — the bulk of the R-INLA use
+cases) and is the scalability ceiling for large areal fields. It is
+strictly an **implementation** waste: the bump is rank-`k`, never `O(n²)`.
+
+### Structure to exploit
+
+`H = (Q + Jᵀ D J) + V Vᵀ = H_s + V Vᵀ`, a **rank-`k` update of a sparse
+matrix `H_s`**. All quantities the Laplace step needs have low-rank
+closed forms, provided `H_s` is factorisable:
+
+- **Solve** (Woodbury): `H⁻¹ b = H_s⁻¹ b − H_s⁻¹ V M⁻¹ Vᵀ H_s⁻¹ b`,
+  `M = I_k + Vᵀ H_s⁻¹ V` (`k` extra sparse solves).
+- **Log-det** (matrix determinant lemma): `logdet H = logdet H_s + logdet M`.
+  Feeds `_log_det_HC` ([`laplace.jl`](../packages/LatentGaussianModels.jl/src/inference/laplace.jl)).
+- **Marginal variances**: `diag(H⁻¹) = diag(H_s⁻¹) − diag(H_s⁻¹ V M⁻¹ Vᵀ H_s⁻¹)`.
+  `diag(H_s⁻¹)` via selected inversion on the **sparse** factor (cheap —
+  this is the ADR-012 path we already reuse per PR #22); the correction is
+  assembled from `H_s⁻¹ V` (`n × k`, `k` solves) and the `k × k` `M`.
+
+### The catch
+
+Woodbury needs `H_s = Q + Jᵀ D J` **positive definite**. `Q` is singular
+(rank `n − k`); `H_s` is PD iff the likelihood curvature `Jᵀ D J` covers
+`null(Q) = range(Cᵀ)`. For the flagship models (Gaussian/Poisson with an
+identity-ish projector, every latent coordinate observed) it does, so
+`H_s` is PD and no bump is needed *at all* — the bump is pure safety
+margin for the rank-deficient case (null direction unidentified by data,
+e.g. a sum-to-zero effect with no data on that contrast). When `H_s` is
+singular, `H_s⁻¹` does not exist and Woodbury-on-`H_s` is unavailable.
+
+### Options
+
+- **(A) Status quo.** Dense bump. Simple, robust, correct. `O(n²)` memory
+  and `O(n³)` factorisation for every constrained intrinsic fit; the
+  observed 139 MiB / 625-node ceiling.
+
+- **(B) Low-rank Woodbury on sparse `H_s`, dense-bump fallback.** Try the
+  sparse Cholesky of `H_s`; on success use the low-rank forms above for
+  solves, log-det, and marginal variances; on `PosDefException` fall back
+  to option (A) for that fit. Captures the full win for the common
+  (data-identified) case — which is the entire flagship benchmark set —
+  while preserving correctness for the singular case. Lowest-risk path to
+  most of the benefit. Downside: two code paths; the marginal-variance
+  low-rank correction needs a dense-oracle test (we have the harness:
+  [`test_constrained_variances_dense.jl`](../packages/LatentGaussianModels.jl/test/regression/test_constrained_variances_dense.jl)).
+
+- **(C) Bordered KKT augmented system.** Solve `[H_s Cᵀ; C 0] [x; λ] =
+  [b; e]` directly, eliminating both the bump *and* the separate kriging
+  projection ([`_kriging_correction`](../packages/LatentGaussianModels.jl/src/inference/constraints.jl)).
+  Well-posed even when `H_s` is singular on `null(Q)` (as long as
+  `[H_s; C]` has full column rank — the constraint supplies the missing
+  rank). The augmented matrix is sparse apart from the `k` constraint
+  rows; for a dense sum-to-zero row this is an **arrow** pattern —
+  ordered last, it adds `O(n·k)` fill, not `O(n²)`. This is the textbook
+  equality-constrained-GMRF solve (Rue & Held 2005 §2.3.2). Most robust
+  and most general, but the largest change: it reshapes the Newton solve,
+  the log-det, and — the genuinely hard part — **selected inversion for
+  marginal variances under the augmented factor** (the constrained
+  covariance is the `(1,1)` block of the KKT inverse; selinv on an
+  indefinite bordered LDLᵀ is not the plain ADR-012 path and needs a
+  prototype spike before commitment).
+
+### Recommendation (for review — not yet accepted)
+
+Stage it. **Adopt (B) first**: it is a contained, well-tested win that
+removes the densification for every data-identified constrained fit (the
+whole flagship suite) with a clean fall-back that guarantees no
+correctness or robustness regression. Gate each low-rank form behind the
+existing dense-oracle test and the R-INLA oracle fixtures; require
+bit-level agreement on log-det and ≤1e-10 on marginal variances vs the
+current dense path before switching a call site.
+
+**Defer (C)** to a follow-up unless (B)'s fallback fires on a real model
+in the oracle suite — i.e. only invest in the KKT reshape if the
+data-unidentified case turns out to matter in practice. If it does, (C)
+subsumes (B) and the bump can be retired entirely.
+
+Do **not** proceed to implementation on the strength of this ADR alone:
+the marginal-variance low-rank correction (B) and, if pursued, the
+augmented-system selinv (C) each need a numerical spike validated against
+the dense oracle before a line of production code changes.
+
+### Consequences
+
+- **Buys:** removes the `O(n²)`/`O(n³)` blow-up for constrained intrinsic
+  models — the dominant allocation and the areal-scalability ceiling.
+  Composes with PR #22 (the sparse `H_s` factor is exactly what
+  `marginal_variances(::FactorCache)` consumes).
+- **Costs:** two code paths (B) or a reshaped constrained solve (C); new
+  low-rank correctness surface that must be oracle-gated; the selinv
+  question under (C) is unresolved and spike-gated.
+- **Escape hatch:** the dense bump (A) stays as the fallback in (B) and as
+  the revert target for (C); no fit loses correctness or robustness.
+
+### References
+
+- [`plans/review-2026-07-remediation.md`](review-2026-07-remediation.md) — Tier-3 item 15, the benchmark that surfaced this.
+- [`_null_bump`](../packages/LatentGaussianModels.jl/src/inference/constraints.jl) — current dense construction.
+- ADR-012 — SelectedInversion.jl; the sparse selinv path the low-rank form reuses.
+- PR #22 — `marginal_variances(::FactorCache)` factor reuse; consumes the sparse `H_s` factor.
+- Rue & Held (2005) §2.3.2 — equality-constrained GMRF solves (kriging vs augmented system).

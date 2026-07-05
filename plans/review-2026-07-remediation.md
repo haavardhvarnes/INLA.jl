@@ -98,8 +98,10 @@ roadmap items from real defects.
 13. Fixed-sparsity-pattern numeric updates for `joint_precision`.
 14. Hot path via `apply!`/`apply_adjoint!`; longer term a `LaplaceWorkspace`.
 15. (new, from #22 benchmarking) The intrinsic null-space bump `V Vᵀ`
-    densifies the regularised precision — biggest structural win, needs a
-    low-rank/Woodbury design + ADR.
+    densifies the regularised precision — biggest structural win. **Design
+    written: ADR-045 (Proposed)** in `plans/decisions.md` — recommends
+    staged low-rank Woodbury (option B) with a dense-bump fallback, KKT
+    (option C) deferred. Implementation is spike-gated pending review.
 
 ### Tier 4 — feature completion (roadmap)
 16. FullLaplace integration means; SimplifiedLaplace variance; integrated

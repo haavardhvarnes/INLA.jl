@@ -98,8 +98,13 @@ roadmap items from real defects.
 13. Fixed-sparsity-pattern numeric updates for `joint_precision`.
 14. Hot path via `apply!`/`apply_adjoint!`; longer term a `LaplaceWorkspace`.
 15. (new, from #22 benchmarking) The intrinsic null-space bump `V Vᵀ`
-    densifies the regularised precision — biggest structural win, needs a
-    low-rank/Woodbury design + ADR.
+    densifies the regularised precision — biggest structural win. **Design:
+    ADR-045 (Proposed)** in `plans/decisions.md`. **Spike done**
+    (`scripts/spikes/adr045_null_space_bump.jl`): when `H_s = Q + JᵀDJ` is
+    PD the bump is entirely unnecessary — constrained variances, log-det,
+    and mode are bump-invariant to machine ε. Option B collapses to "factor
+    sparse `H_s`, drop the bump when PD, keep kriging"; dense bump stays as
+    the singular-`H_s` fallback. Implementation next, oracle-gated.
 
 ### Tier 4 — feature completion (roadmap)
 16. FullLaplace integration means; SimplifiedLaplace variance; integrated

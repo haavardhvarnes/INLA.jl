@@ -38,9 +38,9 @@
 
 Configuration for the low-rank variational-Bayes mean correction
 (ADR-048; R-INLA's `control.vb` mean strategy), applied per
-integration design point when passed to
-`INLA(vb_correction = VBMeanCorrection(...))` (or the shorthand
-`vb_correction = :mean` for the defaults).
+integration design point. On by default
+(`INLA(vb_correction = :mean)`); pass a `VBMeanCorrection(...)` for
+full control or `vb_correction = :none` to disable.
 
 - `n_gh` — Gauss-Hermite nodes per observation for the expected
   log-likelihood (JMLR eq. 17).

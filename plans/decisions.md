@@ -5689,6 +5689,20 @@ INLA(; vb_correction = :none,        # default — bit-identical today
 - **Escape hatch:** `vb_correction = :none` is the default and
   bit-identical to today; the knob is additive.
 
+### Amendment 2026-07-06 — default flipped to `:mean`
+
+The oracle-gated re-run this ADR required has passed: with
+`vb_correction = :mean` active by default, the full dev-linked
+LatentGaussianModels suite (regression + all R-INLA oracle fixtures)
+is green, latent-mean gaps against the VB-corrected fixtures shrink or
+hold within their existing tolerances, and θ-stage outputs
+(`θ̂`, weights, `log_marginal`) are untouched by construction.
+`INLA(...)` and `refine_hyperposterior` now default to
+`vb_correction = :mean`, matching modern R-INLA;
+`vb_correction = :none` remains the exact escape hatch to the pre-VB
+path. `plans/defaults-parity.md` updated from "diverges loudly" to
+"match".
+
 ### References
 
 - van Niekerk & Rue (2024). Low-rank variational Bayes correction to

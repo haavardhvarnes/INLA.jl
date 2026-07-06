@@ -75,10 +75,12 @@ propagating the correction to the full field. Delivers
 Laplace-strategy-grade posterior means at Gaussian-strategy cost on
 skewed likelihoods; exactly zero for Gaussian likelihoods.
 
-- `:none` (default) — bit-identical to previous releases. **This
-  differs from modern R-INLA, where the VB mean correction is on by
-  default** — see `plans/defaults-parity.md`.
-- `:mean` — enable with defaults ([`VBMeanCorrection`](@ref)`()`).
+- `:mean` (default) — enabled with defaults
+  ([`VBMeanCorrection`](@ref)`()`), matching modern R-INLA's
+  `control.vb` behaviour. Flipped from `:none` after oracle-gated
+  validation (ADR-048 amendment; `plans/defaults-parity.md`).
+- `:none` — disable; reproduces pre-VB releases bit-for-bit. Use this
+  when comparing against classic-mode R-INLA or pre-flip results.
 - `VBMeanCorrection(; n_gh, max_block, indices)` — full control.
 
 ### `skewness_correction`
@@ -115,7 +117,7 @@ function INLA(; int_strategy=:auto,
         laplace::Laplace=Laplace(),
         latent_strategy::Union{Symbol, AbstractMarginalStrategy}=Gaussian(),
         skewness_correction::Bool=false,
-        vb_correction::Union{Nothing, Symbol, VBMeanCorrection}=:none,
+        vb_correction::Union{Nothing, Symbol, VBMeanCorrection}=:mean,
         θ0::Union{Nothing, AbstractVector{<:Real}}=nothing,
         optim_options::NamedTuple=NamedTuple())
     ls = _resolve_marginal_strategy(latent_strategy)
@@ -525,7 +527,7 @@ function refine_hyperposterior(res::INLAResult,
         skewness_correction::Bool=true,
         laplace::Laplace=Laplace(),
         latent_strategy::Union{Symbol, AbstractMarginalStrategy}=Gaussian(),
-        vb_correction::Union{Nothing, Symbol, VBMeanCorrection}=:none)
+        vb_correction::Union{Nothing, Symbol, VBMeanCorrection}=:mean)
     n_hyperparameters(model) > 0 ||
         throw(ArgumentError("refine_hyperposterior: model has 0 " *
                             "hyperparameters; nothing to refine"))

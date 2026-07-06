@@ -54,6 +54,7 @@ For navigation; ADR bodies appear in numerical order under the index.
 - [ADR-045](#adr-045-proposed-de-densify-the-constrained-laplace-null-space-bump-low-rank-or-bordered-kkt) — de-densify the constrained-Laplace null-space bump (Proposed)
 - [ADR-046](#adr-046-integrated-hyperparameter-marginals--design-point-reuse-for-mθ--1-conditional-mode-profile-slices-for-mθ--2) — integrated hyperparameter marginals
 - [ADR-047](#adr-047-item-163-closed--the-simplified-laplace-variance-correction-is-mis-specified-no-such-term-exists-in-the-reference-method) — "SLA variance correction" closed as mis-specified
+- [ADR-048](#adr-048-low-rank-variational-bayes-mean-correction-vb_correction--the-adr-047-option-b-successor) — low-rank VB mean correction (Proposed)
 
 **Observation mapping & projectors**
 - [ADR-005](#adr-005-projector-matrix-a-as-a-model-field-in-v0x-possibly-promoted-later) — projector A as model field
@@ -5553,3 +5554,150 @@ no parity value ("more classic than classic").
 - ADR-016 (amended 2026-07-06), ADR-026,
   [`review-2026-07-remediation.md`](review-2026-07-remediation.md)
   item 16.
+
+---
+
+## ADR-048: Low-rank variational-Bayes mean correction (`vb_correction`) — the ADR-047 option-B successor
+
+Status: Proposed
+Date: 2026-07-06
+
+### Context
+
+ADR-047 closed the mis-specified "SLA variance correction" and recorded
+the variational-Bayes corrections as the properly-specified successor
+if modern-R-INLA parity is wanted. Scoping against the primary sources
+splits option B into two very different halves:
+
+- **The mean correction is fully specified and published.** Van Niekerk
+  & Rue (2024, JMLR 25(62)) define the low-rank VB correction (VBC):
+  at fixed θ, improve the Gaussian approximation's mean by
+  `μ*(θ) = μ(θ) + Mλ`, where `M` holds `p` selected columns of
+  `Q_X⁻¹(θ)` (the "propagation matrix" — correcting `p` influential
+  nodes propagates through the GMRF graph to the full field) and `λ`
+  minimises the variational objective
+  `E_q[−log l(y|X)] + ½(μ+Mλ)ᵀQ(θ)(μ+Mλ)` (their eq. 13; CSDA
+  eq. 16). The expected log-likelihood factorises per observation and
+  is computed by 1-D Gauss-Hermite quadrature against
+  `η_i ~ N(μ_i, σ_i²)` (JMLR eq. 17), then Taylor-expanded to second
+  order around `λ = 0` (JMLR eq. 18) — for GLM-type models the whole
+  correction collapses to one small `p × p` solve with closed-form
+  coefficients `B_i`, `C_i`. Van Niekerk, Krainski, Rustand & Rue
+  (2023, CSDA §2.3) confirm this per-θ correction is exactly what the
+  modern R-INLA pipeline applies before integrating over θ — it is
+  the reason all `control.inla$strategy` variants "converge to a
+  single canonical answer" in our fixtures
+  (`synthetic_brunei.R` header), and it delivers Laplace-strategy-grade
+  means at Gaussian-strategy cost.
+- **The variance correction is not published.** The authors describe
+  variance/skewness corrections as promising "initial work" that is
+  "more demanding"; R-INLA's `control.vb` variance strategy exists in
+  GMRFLib but has no citable specification. Implementing it would mean
+  reverse-engineering `hrue/r-inla` source — out of scope until a
+  reference exists.
+
+Ingredient inventory — everything the mean correction needs is already
+in-tree:
+
+- Selected columns of `Q_X⁻¹`: multi-RHS solve on the cached
+  `LaplaceResult.factor` with the Rue-Held kriging projection for
+  constrained models — the exact idiom of `_sla_mean_shift`
+  (`simplified_laplace_correction.jl`).
+- `σ_i² = (A Q_X⁻¹ Aᵀ)_ii`: computed there too (constraint-corrected).
+- Per-observation log-likelihood on GH nodes: pointwise `log_density`
+  evaluations; no new derivative contract (unlike the withdrawn ∇⁴
+  plan — the VBC needs only zeroth-order likelihood evaluations).
+- GH nodes/weights: FastGaussQuadrature is already a dependency
+  (`integration.jl`).
+- A per-θ seam: `_integration_mean_shift` (mean-shift-shaped, exactly
+  what `Mλ` is) and `_apply_integration_moments` (ADR-026 "PR-4") for
+  anything summary-level.
+
+### Decision (proposed)
+
+Implement the **mean correction only**, as a strategy-orthogonal
+opt-in knob mirroring R-INLA's `control.vb`:
+
+```julia
+INLA(; vb_correction = :none,        # default — bit-identical today
+       ...)                          # :mean — VBC per design point
+```
+
+1. **Per-design-point application.** At each retained θ_k (and in the
+   0-hyperparameter fast path, and in `refine_hyperposterior`), compute
+   `λ_k` by the JMLR eq.-18 quadratic and store the shift `M λ_k`.
+   The Newton fixed point `LaplaceResult.mode` stays untouched
+   (ADR-016 precedent): the shift enters the accumulation via the
+   existing `_integration_mean_shift`-style hook, composed with the
+   strategy's own shift (Gaussian: VBC only; SimplifiedLaplace:
+   R-INLA composes VB with strategy corrections — parity detail to pin
+   during implementation; FullLaplace: pilot shift, with the
+   `_apply_integration_moments` refit grids anchored at the corrected
+   pilot).
+2. **Correction index set `I`.** Default: all coordinates of
+   fixed-effect-like components (`Intercept`, `FixedEffects`) plus any
+   component with `length(c) ≤ vb_max_block` (default 30 — R-INLA
+   corrects "fixed effects and short random effects connected to many
+   datapoints"). User override: `vb_indices::Vector{Int}`. Flag the
+   exact R-INLA default in `plans/defaults-parity.md`.
+3. **Quadrature order.** `vb_n_gauss_hermite = 15` per observation
+   (R-INLA-comparable; cost is `O(n · m_gh)` likelihood evaluations
+   plus one `p`-column solve per design point — same order as the SLA
+   mean shift).
+4. **Marginal accessors.** PR-1 corrects the integration-stage
+   summaries (`x_mean`; `x_var` unchanged). Wiring the corrected
+   per-θ means into `posterior_marginal_x` mixtures is PR-2 —
+   separable, and the density accessor documents the mismatch until
+   then.
+5. **Variance correction: explicitly out of scope** until a citable
+   specification exists. Tracked here; revisit on publication or if
+   GMRFLib reverse-engineering is ever justified by a concrete parity
+   failure.
+
+### Validation plan
+
+- Tier 1 (regression): Gaussian likelihood → `λ = 0` exactly (the
+  Laplace mean is already the exact posterior mean; `B ≡ 0` at the
+  mode), asserting bit-identity with `vb_correction = :none`;
+  low-count Poisson GLM → corrected mean matches a dense brute-force
+  posterior-mean quadrature on a small model (the JMLR §3 example
+  pattern); internal triangulation — the VBC mean must land closer to
+  the item-16.2 FullLaplace integration-stage mean than the
+  uncorrected Gaussian mean is, per coordinate:
+  `|μ_vbc − μ_FL| < |μ_G − μ_FL|` on the skewed-likelihood fixture
+  models.
+- Tier 2 (oracle, existing fixtures — all already VB-corrected):
+  measure the latent-mean gaps on Brunei / Pennsylvania / Scotland
+  BYM2 with `vb_correction = :mean` and **tighten** the corresponding
+  tolerances to lock the gain in (e.g. Brunei mean band 0.025 → the
+  observed post-VBC gap plus slack). No fixture regeneration, no R
+  round-trip.
+- Full dev-linked suite green; `vb_correction = :none` bit-identical
+  everywhere.
+
+### Consequences
+
+- **Buys:** the single biggest remaining source of the "unified
+  VB-corrected pipeline" gap between our summaries and modern R-INLA's
+  canonical answers, at roughly SLA-mean-shift cost; means comparable
+  to the expensive FullLaplace strategy at Gaussian-strategy cost
+  (JMLR abstract claim, verifiable against our own FL implementation).
+- **Costs:** a new public knob and its parity documentation; per-θ
+  cost `O(n · m_gh)` likelihood evaluations + one `p`-column
+  multi-RHS solve; the strategy-composition semantics (VB × SLA/FL)
+  must be pinned against R-INLA behaviour during implementation.
+- **Escape hatch:** `vb_correction = :none` is the default and
+  bit-identical to today; the knob is additive.
+
+### References
+
+- van Niekerk & Rue (2024). Low-rank variational Bayes correction to
+  the Laplace method. *JMLR*, 25(62), 1–25 — eqs. 13, 17, 18 (the
+  algorithm); §3 (Poisson example).
+- van Niekerk, Krainski, Rustand & Rue (2023). A new avenue for
+  Bayesian inference with INLA. *CSDA*, 181, 107692 — §2.3 (per-θ
+  application inside the modern pipeline), eq. 16.
+- ADR-047 — option-B mandate; ADR-016 (mean-shift hook precedent);
+  ADR-026 + item 16.2 (`_apply_integration_moments` seam).
+- `plans/defaults-parity.md` — `control.vb` defaults entry to be added
+  in PR-1.

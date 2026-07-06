@@ -47,16 +47,19 @@ versions) is in the result file.
 
 | Dataset | INLA.jl median | R-INLA median | Speedup | Result file |
 |---|---:|---:|---:|---|
-| Scotland BYM2 | 0.07s | 28.00s | 392× | [`2026-05-07_apple_aarch64.md`](https://github.com/HaavardHvarnes/INLA.jl/blob/main/benchmarks/results/2026-05-07_apple_aarch64.md) |
-| Pennsylvania BYM2 | 0.11s | 28.36s | 247× | _(same)_ |
-| Meuse SPDE | 1.18s | 5.76s | 5× | _(same)_ |
+| Scotland BYM2 | 0.06s | 28.80s | 513× | [`2026-07-06_apple_aarch64.md`](https://github.com/HaavardHvarnes/INLA.jl/blob/main/benchmarks/results/2026-07-06_apple_aarch64.md) |
+| Pennsylvania BYM2 | 0.10s | 29.15s | 279× | _(same)_ |
+| Meuse SPDE | 1.55s | 1.64s | 1.06× | _(same)_ |
 
-The Scotland and Pennsylvania speedups are dominated by R-INLA's
-per-fit C-binary startup overhead — a constant ~25–30s load time on
-this hardware that dwarfs the actual fit on small areal-Poisson
-problems. The Meuse comparison reflects the genuine factorisation
-work on a 2,000-vertex SPDE mesh, where the gap is closer to a
-single decimal order. Multi-threaded numbers — once the
+The 2026-07-06 file is the first v1.1.0 run — `vb_correction = :mean`
+active by default; its cost is visible in allocations (+12–18%) but
+lost in wall-clock noise, and the mlik agreement is bit-identical to
+the v1.0.0 run. The Scotland and Pennsylvania speedups are dominated
+by R-INLA's per-fit C-binary startup overhead — a constant ~25–30s
+load time on this hardware that dwarfs the actual fit on small
+areal-Poisson problems. The Meuse comparison reflects the genuine
+factorisation work on a 2,000-vertex SPDE mesh, where recent R-INLA
+builds and INLA.jl sit at parity. Multi-threaded numbers — once the
 `GMRFsPardiso.jl` factorisation backend lands as a weakdep — will
 ship as a separate table in future result files. To reproduce:
 

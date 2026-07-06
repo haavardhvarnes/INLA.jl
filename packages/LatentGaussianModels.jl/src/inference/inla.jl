@@ -59,8 +59,27 @@ toggled independently — see ADR-016.
 the Rue-Martino-Chopin (2009) §3.2.3 skew-normal representation pins
 the variance at 1 by construction, so none is missing here (ADR-047).
 Modern R-INLA's variance adjustments come from the separate,
-strategy-independent variational-Bayes corrections (`control.vb`,
-van Niekerk & Rue 2024), which are not implemented.
+strategy-independent variational-Bayes corrections; the *mean* half of
+those is available here via `vb_correction` (below), the variance half
+is unpublished and not implemented.
+
+### `vb_correction`
+
+Opt-in low-rank variational-Bayes mean correction (ADR-048; van
+Niekerk & Rue 2024; R-INLA's `control.vb` mean strategy). Applied per
+integration design point, composed with the `latent_strategy` shift:
+the Laplace mean is improved as `μ* = μ + Mλ` by minimising the
+variational objective over `p` selected coordinates ("fixed effects
+and short random-effect blocks" by default), with the GMRF graph
+propagating the correction to the full field. Delivers
+Laplace-strategy-grade posterior means at Gaussian-strategy cost on
+skewed likelihoods; exactly zero for Gaussian likelihoods.
+
+- `:none` (default) — bit-identical to previous releases. **This
+  differs from modern R-INLA, where the VB mean correction is on by
+  default** — see `plans/defaults-parity.md`.
+- `:mean` — enable with defaults ([`VBMeanCorrection`](@ref)`()`).
+- `VBMeanCorrection(; n_gh, max_block, indices)` — full control.
 
 ### `skewness_correction`
 
@@ -87,6 +106,7 @@ struct INLA{I, S <: Laplace, M <: AbstractMarginalStrategy} <: AbstractInference
     laplace::S
     latent_strategy::M
     skewness_correction::Bool
+    vb::Union{Nothing, VBMeanCorrection}
     θ0::Union{Nothing, Vector{Float64}}
     optim_options::NamedTuple
 end
@@ -95,11 +115,13 @@ function INLA(; int_strategy=:auto,
         laplace::Laplace=Laplace(),
         latent_strategy::Union{Symbol, AbstractMarginalStrategy}=Gaussian(),
         skewness_correction::Bool=false,
+        vb_correction::Union{Nothing, Symbol, VBMeanCorrection}=:none,
         θ0::Union{Nothing, AbstractVector{<:Real}}=nothing,
         optim_options::NamedTuple=NamedTuple())
     ls = _resolve_marginal_strategy(latent_strategy)
+    vb = _resolve_vb_correction(vb_correction)
     return INLA{typeof(int_strategy), typeof(laplace), typeof(ls)}(
-        int_strategy, laplace, ls, skewness_correction,
+        int_strategy, laplace, ls, skewness_correction, vb,
         θ0 === nothing ? nothing : collect(Float64, θ0),
         optim_options
     )
@@ -284,7 +306,7 @@ function fit(m::LatentGaussianModel, y, strategy::INLA)
     end
 
     return _inla_integrate(m, y, θ̂, Σθ, scheme, strategy.laplace,
-        strategy.latent_strategy, opt_res)
+        strategy.latent_strategy, strategy.vb, opt_res)
 end
 
 # ---------------------------------------------------------------------
@@ -296,6 +318,7 @@ function _inla_integrate(m::LatentGaussianModel, y,
         θ̂::Vector{Float64}, Σθ::Matrix{Float64},
         scheme::AbstractIntegrationScheme,
         laplace::Laplace, latent_strategy::AbstractMarginalStrategy,
+        vb::Union{Nothing, VBMeanCorrection},
         opt_result)
     points, log_base_weights = integration_nodes(scheme, θ̂, Σθ)
 
@@ -367,11 +390,13 @@ function _inla_integrate(m::LatentGaussianModel, y,
     for k in eachindex(points)
         lp = laplaces[k]
         # Per-θ mean: Newton mode by default; with `SimplifiedLaplace`,
-        # apply the Rue-Martino mean shift before accumulating. The
-        # underlying `LaplaceResult.mode` stays untouched so downstream
-        # code (Hermite skew expansion, sampling, log-marginal) keeps
-        # operating around the Newton fixed point.
+        # apply the Rue-Martino mean shift before accumulating; with
+        # `vb_correction`, compose the low-rank VB shift (ADR-048) on
+        # top. The underlying `LaplaceResult.mode` stays untouched so
+        # downstream code (Hermite skew expansion, sampling,
+        # log-marginal) keeps operating around the Newton fixed point.
         mode_k = lp.mode .+ _integration_mean_shift(latent_strategy, lp, m, y)
+        vb === nothing || (mode_k .+= _vb_mean_shift(vb, lp, m, y))
         x_mean .+= w[k] .* mode_k
         # E[x²] at θ_k: mode² + conditional variance (diag of posterior
         # precision inverse, with constraint correction if present).
@@ -411,6 +436,8 @@ function _fit_inla_no_hyperparameters(m::LatentGaussianModel, y, strategy::INLA)
     lp = laplace_mode(m, y, θ̂; strategy=strategy.laplace)
 
     mode = lp.mode .+ _integration_mean_shift(strategy.latent_strategy, lp, m, y)
+    strategy.vb === nothing ||
+        (mode .+= _vb_mean_shift(strategy.vb, lp, m, y))
     cond_var = _constrained_marginal_variances(lp.factor, lp.constraint)
     x_mean = mode
     x_var = cond_var
@@ -497,13 +524,15 @@ function refine_hyperposterior(res::INLAResult,
         span::Real=4.0,
         skewness_correction::Bool=true,
         laplace::Laplace=Laplace(),
-        latent_strategy::Union{Symbol, AbstractMarginalStrategy}=Gaussian())
+        latent_strategy::Union{Symbol, AbstractMarginalStrategy}=Gaussian(),
+        vb_correction::Union{Nothing, Symbol, VBMeanCorrection}=:none)
     n_hyperparameters(model) > 0 ||
         throw(ArgumentError("refine_hyperposterior: model has 0 " *
                             "hyperparameters; nothing to refine"))
     n_grid ≥ 1 || throw(ArgumentError("n_grid must be ≥ 1"))
     span > 0 || throw(ArgumentError("span must be > 0"))
     ls = _resolve_marginal_strategy(latent_strategy)
+    vb = _resolve_vb_correction(vb_correction)
 
     θ̂ = res.θ̂
     Σθ = res.Σθ
@@ -517,7 +546,7 @@ function refine_hyperposterior(res::INLAResult,
     end
 
     return _inla_integrate(model, y, θ̂, Σθ, scheme, laplace,
-        ls, res.optim_result)
+        ls, vb, res.optim_result)
 end
 
 # ---------------------------------------------------------------------

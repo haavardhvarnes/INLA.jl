@@ -4,6 +4,63 @@ All notable changes to this repository are documented here. Format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.0] — 2026-07-06
+
+The 2026-07 review-remediation and inference-quality arc (PRs #29–#34,
+ADRs 046–048). Closes the entire `plans/review-2026-07-remediation.md`
+backlog (Tiers 0–4) and brings the latent-summary pipeline to
+modern-R-INLA parity on posterior means. Lockstep version bump across
+the ecosystem; no compat changes (all cross-package bounds are `"1"`).
+
+### Added
+
+- **Integrated hyperparameter marginals** (ADR-046, PR #29).
+  `posterior_marginal_θ(res, j; method = :auto | :integrated |
+  :gaussian)` — design-point reuse for one hyperparameter (zero extra
+  cost, via the new `INLAResult.log_π` field), conditional-mode
+  profile slices for two or more (requires `model`/`y`).
+  Oracle-gated against the `marginals_hyperpar` grids stored in the
+  fixtures.
+- **FullLaplace integration-stage summaries** (ADR-026 "PR-4",
+  PR #30). `INLA(latent_strategy = FullLaplace())` now produces
+  refitted-Laplace `x_mean` / `x_var` via the
+  `_apply_integration_moments` post-pass; `FullLaplace` gains the
+  `n_grid` / `span` fields. Gated on Brunei `summary.random` at
+  0.025 mean / 0.075 sd.
+- **Low-rank variational-Bayes mean correction** (ADR-048, PR #33).
+  `INLA(vb_correction = :mean | VBMeanCorrection(...))` — van Niekerk
+  & Rue (2024, JMLR 25(62)) per-design-point mean correction;
+  zeroth-order likelihood evaluations only, constraints preserved
+  exactly. Validated from machine-zero Gaussian collapse through
+  brute-force posterior-mean truth to the Brunei oracle.
+
+### Changed
+
+- **`vb_correction` defaults to `:mean`** (PR #34, ADR-048 amendment)
+  in `INLA(...)` and `refine_hyperposterior`, matching modern
+  R-INLA's `control.vb`. Default `inla()` posterior means change
+  (they improve against every VB-corrected oracle fixture);
+  `vb_correction = :none` reproduces the previous behaviour
+  bit-for-bit. `plans/defaults-parity.md` row moves from "diverges
+  loudly" to "match".
+- `posterior_marginal_θ` defaults to the integrated density where it
+  is free or enabled (`method = :auto`); `method = :gaussian` is the
+  exact previous behaviour.
+- The Scotland classical-BYM τ_b oracle assertion is now a two-sided
+  consistency check — the residual ~2× gap is fit-level ridge
+  non-identifiability (R-INLA's own fixture reports τ_v sd 7756),
+  not a summary-statistic mismatch (ADR-046 findings).
+
+### Fixed
+
+- The long-deferred "simplified-Laplace variance correction" is
+  closed as **mis-specified** (ADR-047, PR #31): no such term exists
+  in Rue-Martino-Chopin (2009) — the skew-normal fit pins the
+  variance at 1. ADR-016's `h⁴` formula is withdrawn by amendment and
+  the `INLA` docstring corrected. The unpublished `control.vb`
+  *variance* strategy remains explicitly out of scope until a citable
+  specification exists.
+
 ## [v1.0.0] — 2026-05-07
 
 Phase P closes the v1.0 release arc. F–O delivered the R-INLA-parity

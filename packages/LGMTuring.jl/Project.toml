@@ -1,6 +1,6 @@
 name = "LGMTuring"
 uuid = "588c9a2f-5465-4d76-a094-9dd327a73d42"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
 
 [deps]

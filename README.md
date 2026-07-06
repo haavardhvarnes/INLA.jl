@@ -13,7 +13,7 @@ genuine extensibility.
 
 ## Status
 
-**`v1.0.0`.** The `src/`-bearing packages
+**`v1.1.0`.** The `src/`-bearing packages
 (`GMRFs.jl`, `LatentGaussianModels.jl`, `INLASPDE.jl`,
 `INLASPDERasters.jl`, `LGMFormula.jl`, `LGMTuring.jl`) cover the
 canonical R-INLA datasets within the testing-strategy tolerances. See
@@ -73,7 +73,7 @@ Pkg.develop(url = "https://github.com/haavardhvarnes/INLA.jl",
             subdir = "packages/LGMTuring.jl")
 ```
 
-## What ships in v1.0.0
+## What ships in v1.1.0
 
 - **Latent components**: `Intercept`, `FixedEffects`, `IID`, `RW1`,
   `RW2`, `AR1`, `Seasonal`, `Besag`, `BYM`, `BYM2`, `Leroux`,

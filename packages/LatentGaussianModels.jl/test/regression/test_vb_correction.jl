@@ -39,6 +39,9 @@ using Random
     @test_throws ArgumentError INLA(vb_correction=:bogus)
     @test INLA(vb_correction=:none).vb === nothing
     @test INLA(vb_correction=:mean).vb == VBMeanCorrection()
+    # Default is :mean since the ADR-048 amendment (matches modern
+    # R-INLA's control.vb).
+    @test INLA().vb == VBMeanCorrection()
 end
 
 @testset "Gaussian likelihood — correction is exactly zero" begin
@@ -53,7 +56,7 @@ end
     A = sparse([ones(n) Acols])
     model = LatentGaussianModel(GaussianLikelihood(), (Intercept(), IID(k)), A)
 
-    res_none = inla(model, y; int_strategy=:grid)
+    res_none = inla(model, y; int_strategy=:grid, vb_correction=:none)
     res_vb = inla(model, y; int_strategy=:grid, vb_correction=:mean)
 
     # θ-stage identical (the correction is a summary-stage shift).
@@ -80,7 +83,7 @@ end
     model = LatentGaussianModel(PoissonLikelihood(), (Intercept(),),
         sparse(ones(n, 1)))
 
-    res_none = inla(model, y)
+    res_none = inla(model, y; vb_correction=:none)
     res_vb = inla(model, y; vb_correction=:mean)
 
     # Dense truth: the intercept prior is improper flat (R-INLA
@@ -115,10 +118,10 @@ end
     A = sparse([ones(n) Acols])
     model = LatentGaussianModel(PoissonLikelihood(), (Intercept(), IID(k)), A)
 
-    res_g = inla(model, y; int_strategy=:grid)
+    res_g = inla(model, y; int_strategy=:grid, vb_correction=:none)
     res_vb = inla(model, y; int_strategy=:grid, vb_correction=:mean)
     res_fl = inla(model, y; int_strategy=:grid,
-        latent_strategy=FullLaplace())
+        latent_strategy=FullLaplace(), vb_correction=:none)
 
     # The correction must do real work on a skewed posterior…
     @test maximum(abs, res_vb.x_mean .- res_g.x_mean) > 1.0e-4

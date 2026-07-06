@@ -177,16 +177,18 @@ end
             @test maximum(abs, mean_J_fl .- mean_J_sl) > 1.0e-4
 
             # --- VB mean correction vs the VB-corrected fixture ---------
-            # ADR-048: the fixture's `summary.random` means come from
-            # modern R-INLA's unified VB-corrected pipeline. Enabling
-            # `vb_correction = :mean` on the plain Gaussian strategy must
-            # shrink the latent-mean gap relative to the uncorrected fit
-            # and land within the FL-grade mean tolerance — VB delivers
-            # Laplace-strategy-grade means at Gaussian-strategy cost.
-            res_vb = inla(model, y; int_strategy=:grid,
-                vb_correction=:mean)
-            gap_none = maximum(abs, res.x_mean[2:(n + 1)] .- mean_R)
-            gap_vb = maximum(abs, res_vb.x_mean[2:(n + 1)] .- mean_R)
+            # ADR-048 (default :mean since the amendment): the fixture's
+            # `summary.random` means come from modern R-INLA's unified
+            # VB-corrected pipeline. The default fit `res` carries the
+            # correction; an explicit `:none` fit provides the
+            # uncorrected baseline. The corrected gap must be strictly
+            # smaller and inside the FL-grade mean tolerance — VB
+            # delivers Laplace-strategy-grade means at Gaussian-strategy
+            # cost.
+            res_none = inla(model, y; int_strategy=:grid,
+                vb_correction=:none)
+            gap_none = maximum(abs, res_none.x_mean[2:(n + 1)] .- mean_R)
+            gap_vb = maximum(abs, res.x_mean[2:(n + 1)] .- mean_R)
             @test gap_vb < gap_none
             @test gap_vb < BRUNEI_MEAN_ABS_TOL
 

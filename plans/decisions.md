@@ -54,7 +54,7 @@ For navigation; ADR bodies appear in numerical order under the index.
 - [ADR-045](#adr-045-proposed-de-densify-the-constrained-laplace-null-space-bump-low-rank-or-bordered-kkt) — de-densify the constrained-Laplace null-space bump (Proposed)
 - [ADR-046](#adr-046-integrated-hyperparameter-marginals--design-point-reuse-for-mθ--1-conditional-mode-profile-slices-for-mθ--2) — integrated hyperparameter marginals
 - [ADR-047](#adr-047-item-163-closed--the-simplified-laplace-variance-correction-is-mis-specified-no-such-term-exists-in-the-reference-method) — "SLA variance correction" closed as mis-specified
-- [ADR-048](#adr-048-low-rank-variational-bayes-mean-correction-vb_correction--the-adr-047-option-b-successor) — low-rank VB mean correction (Proposed)
+- [ADR-048](#adr-048-low-rank-variational-bayes-mean-correction-vb_correction--the-adr-047-option-b-successor) — low-rank VB mean correction
 
 **Observation mapping & projectors**
 - [ADR-005](#adr-005-projector-matrix-a-as-a-model-field-in-v0x-possibly-promoted-later) — projector A as model field
@@ -5559,7 +5559,7 @@ no parity value ("more classic than classic").
 
 ## ADR-048: Low-rank variational-Bayes mean correction (`vb_correction`) — the ADR-047 option-B successor
 
-Status: Proposed
+Status: Accepted (approved and implemented 2026-07-06)
 Date: 2026-07-06
 
 ### Context

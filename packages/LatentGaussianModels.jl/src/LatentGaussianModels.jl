@@ -103,6 +103,7 @@ include("inference/laplace.jl")
 include("inference/empirical_bayes.jl")
 include("inference/integration.jl")
 include("inference/simplified_laplace_correction.jl")
+include("inference/vb_correction.jl")
 include("inference/inla.jl")
 include("inference/full_laplace.jl")
 include("inference/marginals.jl")
@@ -175,6 +176,7 @@ export joint_log_density, joint_∇_η_log_density, joint_∇²_η_log_density,
        joint_∇³_η_log_density, joint_pointwise_log_density, joint_pointwise_cdf
 export AbstractInferenceStrategy, AbstractInferenceResult
 export AbstractMarginalStrategy, Gaussian, SimplifiedLaplace, FullLaplace
+export VBMeanCorrection
 export AbstractIntegrationScheme, Grid, GaussHermite, CCD,
        compute_skewness_corrections
 export Laplace, LaplaceResult, laplace_mode, laplace_mode_fixed_xi

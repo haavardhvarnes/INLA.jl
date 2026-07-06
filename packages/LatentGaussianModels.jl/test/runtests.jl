@@ -174,6 +174,9 @@ using GMRFs
     @testset "FullLaplace — integration-stage summaries (item 16.2)" begin
         include("regression/test_full_laplace_integration.jl")
     end
+    @testset "VB mean correction (ADR-048)" begin
+        include("regression/test_vb_correction.jl")
+    end
     @testset "LogDensityProblems conformance" begin
         include("regression/test_log_density.jl")
     end
